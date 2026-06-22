@@ -37,5 +37,8 @@ Additional Things to note for:
     - When a new user logs in and is shown the google oauth authorization screen, subsequent logins (following session logouts or app closes) should not ask for the authorization consent sreen again unless the user manually revokes the app's linkage to their google account.
 
 
+Test launcher:
+    Write a python script that will serve the web app locally on a specific port (e.g. 8000).
+
 TODO (don't do till i tell you):
     - see ./todo.md

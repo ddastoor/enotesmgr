@@ -1,0 +1,469 @@
+import { navigate, logout } from "../app.js";
+import { state, filePassword } from "../state.js";
+import {
+    listChildren,
+    downloadText,
+    createTextFile,
+    updateTextFile,
+    renameFile,
+    deleteFile,
+    findChild,
+} from "../drive.js";
+import { encryptData, decryptData } from "../crypto/crypto.js";
+import { withStatus, showAlert, showPrompt, showConfirm, showYesNo } from "../lib/dialogs.js";
+import { openMenu } from "./menu.js";
+
+// --- page-local state --------------------------------------------------------
+let entries = [];          // [{id, name}] sorted alphabetically
+let current = null;        // {id, name, type: 'note'|'media'} or null (dummy)
+let dirty = false;
+
+const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+function isMediaContent(text) {
+    const t = text.trimStart();
+    return t.startsWith("data:image/") || t.startsWith("data:audio/");
+}
+
+// --- render ------------------------------------------------------------------
+export function render(container) {
+    container.innerHTML = `
+        <div class="page main-page">
+            <header class="app-header">
+                <div class="header-top">
+                    <h1 class="brand-title gradient">eNotes</h1>
+                    <div class="header-actions">
+                        <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
+                        <button id="btn-more" class="icon-btn" title="More options">☰</button>
+                        <button id="btn-logout" class="icon-btn" title="Logout">⏻</button>
+                    </div>
+                </div>
+                <div id="username" class="username"></div>
+            </header>
+
+            <section class="toolbar glass">
+                <select id="file-select" class="file-select" title="Select a note"></select>
+                <button id="tb-refresh" class="btn btn-tonal" title="Refresh the current note">Refresh</button>
+                <button id="tb-new" class="btn btn-tonal" title="Create a new note">New</button>
+                <button id="tb-upload" class="btn btn-tonal" title="Upload an image or audio file">Upload</button>
+                <button id="tb-save" class="btn btn-filled" title="Save the current note">Save</button>
+                <button id="tb-rename" class="btn btn-tonal" title="Rename the current note">Rename</button>
+                <button id="tb-delete" class="btn btn-danger" title="Delete the current note">Delete</button>
+            </section>
+
+            <section class="note-area">
+                <div id="editor-wrap" class="editor-wrap">
+                    <div class="editor-toolbar">
+                        <button data-cmd="bold" class="fmt-btn" title="Bold"><b>B</b></button>
+                        <button data-cmd="italic" class="fmt-btn" title="Italic"><i>I</i></button>
+                        <button data-cmd="underline" class="fmt-btn" title="Underline"><u>U</u></button>
+                        <button id="ins-image" class="fmt-btn" title="Insert Image from local device">🖼️</button>
+                        <button id="ins-audio" class="fmt-btn" title="Insert Audio from local device">🔊</button>
+                    </div>
+                    <div id="editor" class="editor" contenteditable="true"
+                         data-placeholder="Write your note here..."></div>
+                </div>
+                <div id="media-viewer" class="media-viewer" hidden></div>
+            </section>
+        </div>
+
+        <input id="hidden-upload" type="file" accept="image/*,audio/*" hidden />
+        <input id="hidden-ins-image" type="file" accept="image/*" hidden />
+        <input id="hidden-ins-audio" type="file" accept="audio/*" hidden />`;
+
+    container.querySelector("#username").textContent = state.username || "";
+
+    // Header buttons
+    container.querySelector("#btn-settings").addEventListener("click", () => navigate("settings"));
+    container.querySelector("#btn-more").addEventListener("click", () => openMenu());
+    container.querySelector("#btn-logout").addEventListener("click", () => logout());
+
+    // Toolbar buttons
+    container.querySelector("#tb-refresh").addEventListener("click", onRefresh);
+    container.querySelector("#tb-new").addEventListener("click", onNew);
+    container.querySelector("#tb-upload").addEventListener("click", () =>
+        container.querySelector("#hidden-upload").click());
+    container.querySelector("#tb-save").addEventListener("click", onSave);
+    container.querySelector("#tb-rename").addEventListener("click", onRename);
+    container.querySelector("#tb-delete").addEventListener("click", onDelete);
+
+    container.querySelector("#file-select").addEventListener("change", onSelectChange);
+
+    // Editor format buttons
+    container.querySelectorAll(".editor-toolbar [data-cmd]").forEach((btn) => {
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault(); // keep selection in editor
+            document.execCommand(btn.dataset.cmd, false, null);
+            markDirty();
+        });
+    });
+    container.querySelector("#ins-image").addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        container.querySelector("#hidden-ins-image").click();
+    });
+    container.querySelector("#ins-audio").addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        container.querySelector("#hidden-ins-audio").click();
+    });
+
+    container.querySelector("#editor").addEventListener("input", markDirty);
+
+    // Hidden file inputs
+    container.querySelector("#hidden-upload").addEventListener("change", onUploadFile);
+    container.querySelector("#hidden-ins-image").addEventListener("change", onInsertImage);
+    container.querySelector("#hidden-ins-audio").addEventListener("change", onInsertAudio);
+
+    refreshEntries();
+}
+
+// --- entries / selector ------------------------------------------------------
+function sortEntries() {
+    entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+function rebuildSelect(selectedName = "") {
+    const sel = document.getElementById("file-select");
+    sel.innerHTML = "";
+    const dummy = document.createElement("option");
+    dummy.value = "";
+    dummy.textContent = "";
+    sel.appendChild(dummy);
+    entries.forEach((e) => {
+        const opt = document.createElement("option");
+        opt.value = e.name;
+        opt.textContent = e.name;
+        sel.appendChild(opt);
+    });
+    sel.value = selectedName;
+}
+
+async function refreshEntries(selectedName = "") {
+    try {
+        const files = await withStatus("Loading...", () => listChildren(state.folders.entries));
+        entries = files.map((f) => ({ id: f.id, name: f.name }));
+        sortEntries();
+        rebuildSelect(selectedName);
+        updateButtons();
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not load your notes.", "Error");
+    }
+}
+
+async function onSelectChange(e) {
+    const name = e.target.value;
+    if (!name) {
+        current = null;
+        showEditor("");
+        dirty = false;
+        updateButtons();
+        return;
+    }
+    const entry = entries.find((x) => x.name === name);
+    if (entry) await loadNote(entry);
+}
+
+// --- load / save -------------------------------------------------------------
+async function loadNote(entry) {
+    try {
+        const content = await withStatus("Loading...", async () => {
+            const cipher = await downloadText(entry.id);
+            return decryptData(cipher, filePassword());
+        });
+
+        if (isMediaContent(content)) {
+            current = { id: entry.id, name: entry.name, type: "media" };
+            showMedia(content);
+        } else {
+            current = { id: entry.id, name: entry.name, type: "note" };
+            showEditor(content);
+        }
+        dirty = false;
+        updateButtons();
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not open this note.", "Error");
+    }
+}
+
+async function onRefresh() {
+    if (!current) return;
+    const entry = entries.find((x) => x.id === current.id);
+    if (entry) await loadNote(entry);
+}
+
+async function saveCurrentNote() {
+    if (!current || current.type !== "note") return;
+    const html = document.getElementById("editor").innerHTML;
+    await withStatus("Saving...", async () => {
+        const cipher = encryptData(html, filePassword());
+        await updateTextFile(current.id, cipher);
+    });
+    dirty = false;
+}
+
+async function onSave() {
+    if (!current || current.type !== "note") return;
+    try {
+        await saveCurrentNote();
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not save this note.", "Error");
+    }
+}
+
+// If a note is loaded with unsaved changes, offer to save it. Returns false if
+// the user cancelled the surrounding action entirely.
+async function maybeSaveBeforeSwitch() {
+    if (current && current.type === "note" && dirty && isEditorVisible()) {
+        const ans = await showYesNo("Do you want to save the current note?", "Unsaved changes");
+        if (ans === "cancel") return false;
+        if (ans === "yes") await saveCurrentNote();
+    }
+    return true;
+}
+
+// --- New / Upload / Rename / Delete -----------------------------------------
+async function onNew() {
+    const name = await showPrompt("Enter a name for the new note:", { title: "New note" });
+    if (!name) return;
+    if (entries.some((e) => e.name === name)) {
+        await showAlert("Filename already exists", "Error");
+        return;
+    }
+    if (current) {
+        const proceed = await maybeSaveBeforeSwitch();
+        if (!proceed) return;
+    }
+    try {
+        const created = await withStatus("Creating...", async () => {
+            const cipher = encryptData("", filePassword());
+            return createTextFile(name, cipher, state.folders.entries);
+        });
+        entries.push({ id: created.id, name });
+        sortEntries();
+        rebuildSelect(name);
+        current = { id: created.id, name, type: "note" };
+        showEditor("");
+        dirty = false;
+        updateButtons();
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not create the note.", "Error");
+    }
+}
+
+async function onUploadFile(e) {
+    const file = e.target.files[0];
+    e.target.value = ""; // allow re-selecting same file later
+    if (!file) return;
+
+    if (entries.some((x) => x.name === file.name)) {
+        await showAlert("Filename already exists", "Error");
+        return;
+    }
+    if (current) {
+        const proceed = await maybeSaveBeforeSwitch();
+        if (!proceed) return;
+    }
+    try {
+        const dataUrl = await readFileAsDataURL(file);
+        const created = await withStatus("Uploading...", async () => {
+            const cipher = encryptData(dataUrl, filePassword());
+            return createTextFile(file.name, cipher, state.folders.entries);
+        });
+        entries.push({ id: created.id, name: file.name });
+        sortEntries();
+        rebuildSelect(file.name);
+        current = { id: created.id, name: file.name, type: "media" };
+        showMedia(dataUrl);
+        dirty = false;
+        updateButtons();
+    } catch (err) {
+        console.error(err);
+        await showAlert("Could not upload the file.", "Error");
+    }
+}
+
+async function onRename() {
+    if (!current) return;
+    const name = await showPrompt("Enter a new name for this note:", {
+        title: "Rename note",
+        initial: current.name,
+    });
+    if (!name || name === current.name) return;
+    if (entries.some((x) => x.name === name)) {
+        await showAlert("Filename already exists", "Error");
+        return;
+    }
+    try {
+        await withStatus("Renaming...", () => renameFile(current.id, name));
+        const entry = entries.find((x) => x.id === current.id);
+        if (entry) entry.name = name;
+        current.name = name;
+        sortEntries();
+        rebuildSelect(name);
+        updateButtons();
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not rename the note.", "Error");
+    }
+}
+
+async function onDelete() {
+    if (!current) return;
+    const ok = await showConfirm(`Delete "${current.name}"? This cannot be undone.`, "Delete note");
+    if (!ok) return;
+    try {
+        await withStatus("Deleting...", () => deleteFile(current.id));
+        entries = entries.filter((x) => x.id !== current.id);
+        current = null;
+        sortEntries();
+        rebuildSelect("");
+        showEditor("");
+        dirty = false;
+        updateButtons();
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not delete the note.", "Error");
+    }
+}
+
+// --- editor / media views ----------------------------------------------------
+function isEditorVisible() {
+    return !document.getElementById("editor-wrap").hidden;
+}
+
+function showEditor(html) {
+    document.getElementById("media-viewer").hidden = true;
+    const wrap = document.getElementById("editor-wrap");
+    wrap.hidden = false;
+    const editor = document.getElementById("editor");
+    editor.innerHTML = html;
+    decorateEmbeds(editor);
+}
+
+function showMedia(dataUrl) {
+    document.getElementById("editor-wrap").hidden = true;
+    const viewer = document.getElementById("media-viewer");
+    viewer.hidden = false;
+    viewer.innerHTML = "";
+    if (dataUrl.startsWith("data:image/")) {
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        img.className = "viewer-image";
+        if (isMobile()) {
+            img.classList.add("mobile-img");
+            img.addEventListener("click", () => openInNewWindow(dataUrl));
+        }
+        viewer.appendChild(img);
+    } else {
+        const audio = document.createElement("audio");
+        audio.controls = true;
+        audio.src = dataUrl;
+        viewer.appendChild(audio);
+    }
+}
+
+// --- rich text embeds --------------------------------------------------------
+async function onInsertImage(e) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const dataUrl = await readFileAsDataURL(file);
+    const span = document.createElement("span");
+    span.className = "media-embed";
+    span.contentEditable = "false";
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    if (isMobile()) {
+        img.className = "mobile-img";
+        img.addEventListener("click", () => openInNewWindow(dataUrl));
+    }
+    span.appendChild(img);
+    insertNodeAtCursor(span);
+    markDirty();
+}
+
+async function onInsertAudio(e) {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const dataUrl = await readFileAsDataURL(file);
+    const span = document.createElement("span");
+    span.className = "media-embed";
+    span.contentEditable = "false";
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.src = dataUrl;
+    span.appendChild(audio);
+    insertNodeAtCursor(span);
+    markDirty();
+}
+
+// Re-attach mobile tap handlers to embedded images after loading saved HTML.
+function decorateEmbeds(editor) {
+    if (!isMobile()) return;
+    editor.querySelectorAll(".media-embed img").forEach((img) => {
+        img.classList.add("mobile-img");
+        img.addEventListener("click", () => openInNewWindow(img.src));
+    });
+}
+
+function insertNodeAtCursor(node) {
+    const editor = document.getElementById("editor");
+    editor.focus();
+    const sel = window.getSelection();
+    let range;
+    if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
+        range = sel.getRangeAt(0);
+        range.deleteContents();
+    } else {
+        range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+    }
+    range.insertNode(node);
+    // Place a space + caret after the embed so typing continues normally.
+    const space = document.createTextNode(" ");
+    range.setStartAfter(node);
+    range.insertNode(space);
+    range.setStartAfter(space);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+}
+
+function openInNewWindow(dataUrl) {
+    const w = window.open();
+    if (w) {
+        w.document.write(
+            `<title>Image</title><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh">` +
+            `<img src="${dataUrl}" style="max-width:100%;height:auto" /></body>`
+        );
+        w.document.close();
+    }
+}
+
+// --- helpers -----------------------------------------------------------------
+function markDirty() { dirty = true; }
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function updateButtons() {
+    const isDummy = !current;
+    const isMedia = current && current.type === "media";
+
+    document.getElementById("tb-refresh").disabled = isDummy;
+    document.getElementById("tb-rename").disabled = isDummy;
+    document.getElementById("tb-delete").disabled = isDummy;
+    // Save disabled for the dummy entry and for uploaded media files.
+    document.getElementById("tb-save").disabled = isDummy || isMedia;
+}
