@@ -15,14 +15,88 @@ import { openMenu } from "./menu.js";
 
 // --- page-local state --------------------------------------------------------
 let entries = [];          // [{id, name}] sorted alphabetically
-let current = null;        // {id, name, type: 'note'|'media'} or null (dummy)
+let current = null;        // {id, name, meta} or null (dummy); see note-meta-data.md
 let dirty = false;
 
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
-function isMediaContent(text) {
+// --- embedded note metadata --------------------------------------------------
+// Each note entry file is, before encryption, a metadata section + exactly one
+// newline + the actual content. See instructions/note-meta-data.md.
+const META_BEGIN = "[metadata begin]";
+const META_END = "[metadata end]";
+
+// Current date/time in the [date]T[time] format, e.g. 2026-01-21T10:30.
+function nowStamp() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+        `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Map an uploaded file's MIME type to an allowed FileType, or null if neither
+// image nor audio.
+function fileTypeFromMime(mime) {
+    if (mime && mime.startsWith("image/")) return "image";
+    if (mime && mime.startsWith("audio/")) return "audio";
+    return null;
+}
+
+// Strip a trailing extension from a user-entered filename ('mynote.txt' -> 'mynote').
+function stripExtension(name) {
+    return name.replace(/\.[^.]+$/, "");
+}
+
+// Build the un-encrypted note entry content: metadata section + one newline + content.
+function serializeNote(meta, content) {
+    const lines = [META_BEGIN];
+    for (const [k, v] of Object.entries(meta)) lines.push(`${k} = ${v}`);
+    lines.push(META_END);
+    return lines.join("\n") + "\n" + content;
+}
+
+// Parse decrypted note entry text into { meta, content }. Files written before
+// metadata was embedded have no metadata section, so we infer it from the content.
+function parseNote(text) {
+    const beginIdx = text.indexOf(META_BEGIN);
+    const endIdx = text.indexOf(META_END);
+    if (beginIdx === -1 || endIdx === -1 || endIdx < beginIdx) {
+        return { meta: inferLegacyMeta(text), content: text };
+    }
+    const meta = {};
+    text.slice(beginIdx + META_BEGIN.length, endIdx).split("\n").forEach((line) => {
+        const eq = line.indexOf("=");
+        if (eq === -1) return;
+        const key = line.slice(0, eq).trim();
+        if (key) meta[key] = line.slice(eq + 1).trim();
+    });
+    // Content follows [metadata end] and exactly one newline.
+    let rest = text.slice(endIdx + META_END.length);
+    if (rest.startsWith("\r\n")) rest = rest.slice(2);
+    else if (rest.startsWith("\n")) rest = rest.slice(1);
+    return { meta, content: rest };
+}
+
+// Derive metadata for a legacy file that has no embedded metadata section.
+function inferLegacyMeta(text) {
     const t = text.trimStart();
-    return t.startsWith("data:image/") || t.startsWith("data:audio/");
+    const fileType = t.startsWith("data:image/") ? "image"
+        : t.startsWith("data:audio/") ? "audio"
+        : "richtext";
+    return {
+        DateTimeCreated: "",
+        DateTimeModified: "",
+        CreationMethod: fileType === "richtext" ? "new" : "upload",
+        FileType: fileType,
+    };
+}
+
+const isMediaType = (meta) => meta && meta.FileType !== "richtext";
+
+// Display content using the right control per the FileType metadata key.
+function displayNote(meta, content) {
+    if (isMediaType(meta)) showMedia(content);
+    else showEditor(content);
 }
 
 // --- render ------------------------------------------------------------------
@@ -166,18 +240,12 @@ async function onSelectChange(e) {
 // --- load / save -------------------------------------------------------------
 async function loadNote(entry) {
     try {
-        const content = await withStatus("Loading...", async () => {
+        const { meta, content } = await withStatus("Loading...", async () => {
             const cipher = await downloadText(entry.id);
-            return decryptData(cipher, filePassword());
+            return parseNote(decryptData(cipher, filePassword()));
         });
-
-        if (isMediaContent(content)) {
-            current = { id: entry.id, name: entry.name, type: "media" };
-            showMedia(content);
-        } else {
-            current = { id: entry.id, name: entry.name, type: "note" };
-            showEditor(content);
-        }
+        current = { id: entry.id, name: entry.name, meta };
+        displayNote(meta, content);
         dirty = false;
         updateButtons();
     } catch (e) {
@@ -193,17 +261,20 @@ async function onRefresh() {
 }
 
 async function saveCurrentNote() {
-    if (!current || current.type !== "note") return;
-    const html = document.getElementById("editor").innerHTML;
+    if (!current || isMediaType(current.meta)) return;
+    // Update DateTimeModified and the actual content, then re-serialize and encrypt.
+    const meta = { ...current.meta, DateTimeModified: nowStamp() };
+    const content = document.getElementById("editor").innerHTML;
     await withStatus("Saving...", async () => {
-        const cipher = encryptData(html, filePassword());
+        const cipher = encryptData(serializeNote(meta, content), filePassword());
         await updateTextFile(current.id, cipher);
     });
+    current.meta = meta;
     dirty = false;
 }
 
 async function onSave() {
-    if (!current || current.type !== "note") return;
+    if (!current || isMediaType(current.meta)) return;
     try {
         await saveCurrentNote();
     } catch (e) {
@@ -212,10 +283,10 @@ async function onSave() {
     }
 }
 
-// If a note is loaded with unsaved changes, offer to save it. Returns false if
-// the user cancelled the surrounding action entirely.
+// If a note created via "new" (a rich text note) has unsaved changes, offer to
+// save it. Returns false if the user cancelled the surrounding action entirely.
 async function maybeSaveBeforeSwitch() {
-    if (current && current.type === "note" && dirty && isEditorVisible()) {
+    if (current && current.meta.CreationMethod === "new" && dirty) {
         const ans = await showYesNo("Do you want to save the current note?", "Unsaved changes");
         if (ans === "cancel") return false;
         if (ans === "yes") await saveCurrentNote();
@@ -225,7 +296,9 @@ async function maybeSaveBeforeSwitch() {
 
 // --- New / Upload / Rename / Delete -----------------------------------------
 async function onNew() {
-    const name = await showPrompt("Enter a name for the new note:", { title: "New note" });
+    const entered = await showPrompt("Enter a name for the new note:", { title: "New note" });
+    if (!entered) return;
+    const name = stripExtension(entered.trim());
     if (!name) return;
     if (entries.some((e) => e.name === name)) {
         await showAlert("Filename already exists", "Error");
@@ -236,15 +309,22 @@ async function onNew() {
         if (!proceed) return;
     }
     try {
+        const stamp = nowStamp();
+        const meta = {
+            DateTimeCreated: stamp,
+            DateTimeModified: stamp,
+            CreationMethod: "new",
+            FileType: "richtext",
+        };
         const created = await withStatus("Creating...", async () => {
-            const cipher = encryptData("", filePassword());
+            const cipher = encryptData(serializeNote(meta, ""), filePassword());
             return createTextFile(name, cipher, state.folders.entries);
         });
         entries.push({ id: created.id, name });
         sortEntries();
         rebuildSelect(name);
-        current = { id: created.id, name, type: "note" };
-        showEditor("");
+        current = { id: created.id, name, meta };
+        displayNote(meta, "");
         dirty = false;
         updateButtons();
     } catch (e) {
@@ -258,25 +338,37 @@ async function onUploadFile(e) {
     e.target.value = ""; // allow re-selecting same file later
     if (!file) return;
 
-    if (entries.some((x) => x.name === file.name)) {
-        await showAlert("Filename already exists", "Error");
+    const fileType = fileTypeFromMime(file.type);
+    if (!fileType) {
+        await showAlert("Only image or audio files can be uploaded.", "Error");
         return;
     }
     if (current) {
         const proceed = await maybeSaveBeforeSwitch();
         if (!proceed) return;
     }
+    if (entries.some((x) => x.name === file.name)) {
+        await showAlert("Filename already exists", "Error");
+        return;
+    }
     try {
         const dataUrl = await readFileAsDataURL(file);
+        const stamp = nowStamp();
+        const meta = {
+            DateTimeCreated: stamp,
+            DateTimeModified: stamp,
+            CreationMethod: "upload",
+            FileType: fileType,
+        };
         const created = await withStatus("Uploading...", async () => {
-            const cipher = encryptData(dataUrl, filePassword());
+            const cipher = encryptData(serializeNote(meta, dataUrl), filePassword());
             return createTextFile(file.name, cipher, state.folders.entries);
         });
         entries.push({ id: created.id, name: file.name });
         sortEntries();
         rebuildSelect(file.name);
-        current = { id: created.id, name: file.name, type: "media" };
-        showMedia(dataUrl);
+        current = { id: created.id, name: file.name, meta };
+        displayNote(meta, dataUrl);
         dirty = false;
         updateButtons();
     } catch (err) {
@@ -330,10 +422,6 @@ async function onDelete() {
 }
 
 // --- editor / media views ----------------------------------------------------
-function isEditorVisible() {
-    return !document.getElementById("editor-wrap").hidden;
-}
-
 function showEditor(html) {
     document.getElementById("media-viewer").hidden = true;
     const wrap = document.getElementById("editor-wrap");
@@ -459,7 +547,7 @@ function readFileAsDataURL(file) {
 
 function updateButtons() {
     const isDummy = !current;
-    const isMedia = current && current.type === "media";
+    const isMedia = current && isMediaType(current.meta);
 
     document.getElementById("tb-refresh").disabled = isDummy;
     document.getElementById("tb-rename").disabled = isDummy;
