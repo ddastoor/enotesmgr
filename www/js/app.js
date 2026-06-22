@@ -2,7 +2,7 @@
 // Navigation is purely in-memory (single page app); we never change the URL so
 // the OAuth redirect/popup flow stays simple.
 
-import { state, resetState } from "./state.js";
+import { state, resetState, DEFAULT_SETTINGS } from "./state.js";
 import { hideStatus } from "./lib/dialogs.js";
 
 import * as login from "./pages/login.js";
@@ -40,10 +40,20 @@ export function navigate(pageName, params = {}) {
     if (currentPage && currentPage.teardown) currentPage.teardown();
     hideStatus();
 
+    applyTheme();
+
     const container = document.getElementById("app");
     container.innerHTML = "";
     currentPage = page;
     page.render(container, params);
+}
+
+// Reflect the App Theme setting on the document. Driven by settings json, so it
+// applies as soon as settings are loaded (login) or changed (settings save) and
+// the next navigation happens; falls back to the default before login.
+export function applyTheme() {
+    const theme = (state.settingsJson && state.settingsJson.app_theme) || DEFAULT_SETTINGS.app_theme;
+    document.documentElement.dataset.theme = theme === "Dark" ? "dark" : "light";
 }
 
 // ---- Logout -----------------------------------------------------------------

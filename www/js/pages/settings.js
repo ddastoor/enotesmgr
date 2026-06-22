@@ -22,6 +22,14 @@ export function render(container) {
                     <p class="muted small">Your Google session time in seconds (60–3600).</p>
                     <input id="set-timeout" type="number" min="60" max="3600" class="text-input" />
                 </div>
+                <div class="setting-row">
+                    <label class="field-label" for="set-theme">App Theme</label>
+                    <p class="muted small">Choose the appearance of the app.</p>
+                    <select id="set-theme" class="text-input">
+                        <option value="Light">Light</option>
+                        <option value="Dark">Dark</option>
+                    </select>
+                </div>
                 <div id="set-error" class="inline-error"></div>
             </section>
 
@@ -32,45 +40,50 @@ export function render(container) {
         </div>`;
 
     const timeoutInput = container.querySelector("#set-timeout");
+    const themeSelect = container.querySelector("#set-theme");
     const err = container.querySelector("#set-error");
 
     // Populate from settings json (load from Drive to be safe).
-    loadSettings(timeoutInput);
+    loadSettings(timeoutInput, themeSelect);
 
     container.querySelector("#set-cancel").addEventListener("click", () => navigate("main"));
-    container.querySelector("#set-save").addEventListener("click", () => onSave(timeoutInput, err));
+    container.querySelector("#set-save").addEventListener("click", () => onSave(timeoutInput, themeSelect, err));
 }
 
-async function loadSettings(timeoutInput) {
-    // Reflect current in-memory value immediately, then refresh from Drive.
-    const current = (state.settingsJson && state.settingsJson.session_timeout_seconds) || DEFAULT_SETTINGS.session_timeout_seconds;
-    timeoutInput.value = current;
+async function loadSettings(timeoutInput, themeSelect) {
+    // Reflect current in-memory values immediately, then refresh from Drive.
+    const cur = state.settingsJson || {};
+    timeoutInput.value = cur.session_timeout_seconds || DEFAULT_SETTINGS.session_timeout_seconds;
+    themeSelect.value = cur.app_theme || DEFAULT_SETTINGS.app_theme;
     try {
         const meta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
         if (meta) {
             const cipher = await withStatus("Loading...", () => downloadText(meta.id));
             const json = JSON.parse(decryptData(cipher, filePassword()));
             state.settingsJson = json;
-            timeoutInput.value = json.session_timeout_seconds;
+            timeoutInput.value = json.session_timeout_seconds || DEFAULT_SETTINGS.session_timeout_seconds;
+            themeSelect.value = json.app_theme || DEFAULT_SETTINGS.app_theme;
         }
     } catch (e) {
         console.error(e);
     }
 }
 
-async function onSave(timeoutInput, err) {
+async function onSave(timeoutInput, themeSelect, err) {
     err.textContent = "";
     const value = parseInt(timeoutInput.value, 10);
     if (!Number.isInteger(value) || value < MIN_TIMEOUT || value > MAX_TIMEOUT) {
         err.textContent = `Session timeout must be a number between ${MIN_TIMEOUT} and ${MAX_TIMEOUT} seconds.`;
         return;
     }
+    const theme = themeSelect.value === "Dark" ? "Dark" : "Light";
     try {
-        state.settingsJson = { ...state.settingsJson, session_timeout_seconds: value };
+        state.settingsJson = { ...state.settingsJson, session_timeout_seconds: value, app_theme: theme };
         await withStatus("Saving...", async () => {
             const cipher = encryptData(JSON.stringify(state.settingsJson), filePassword());
             await upsertTextFile(SETTINGS_FILE_NAME, cipher, state.folders.config);
         });
+        // navigate() re-applies the theme from settings json, refreshing the app.
         navigate("main");
     } catch (e) {
         console.error(e);

@@ -24,7 +24,23 @@ Settings page {
                             After no user activity for 'session timeout seconds', log out
                         } 
 
-                    },
+                    }
+
+                'App Theme' {
+                    type: dropdown 
+                    default value: "Light"
+                    
+                    options {
+                        "Light"
+                        "Dark"
+                    }
+
+                    app behavior {
+                        refreshes the app with the selected theme
+                    }
+
+                }
+
 
 
                 ]

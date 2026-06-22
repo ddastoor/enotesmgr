@@ -26,6 +26,27 @@
     --font: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Dark theme — overrides the design tokens above. Toggled via the App Theme
+   setting, which sets data-theme="dark" on <html> (see app.js applyTheme). */
+:root[data-theme="dark"] {
+    --bg: #14121a;
+    --surface: #1e1b26;
+    --surface-2: #272232;
+    --on-surface: #ece8f3;
+    --on-surface-muted: #a9a2bd;
+    --outline: #3a3450;
+
+    --accent-soft: #352c52;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="dark"] body {
+    background:
+        radial-gradient(1200px 600px at 10% -10%, #1d2236, transparent 60%),
+        radial-gradient(1000px 500px at 110% 10%, #1a2333, transparent 55%),
+        var(--bg);
+}
+
 * { box-sizing: border-box; }
 
 /* The [hidden] attribute must always win over the flex display set on
