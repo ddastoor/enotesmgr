@@ -37,6 +37,7 @@ Settings page {
 
                     app behavior {
                         refreshes the app with the selected theme
+                        In theme=dark, make sure that the button labels are contrasty enough and also the font color of the file selection dropdown is also contrasty enough so it's discernable.
                     }
 
                 }

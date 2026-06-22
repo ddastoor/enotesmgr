@@ -47,6 +47,17 @@
         var(--bg);
 }
 
+/* Dark-theme contrast tweaks. The tonal button's --accent-deep label is too
+   dim on the dark surface, and the file-selection dropdown needs explicit light
+   text (both for the closed control and the open option list). */
+:root[data-theme="dark"] .btn-tonal { color: #c9b6ff; }
+:root[data-theme="dark"] .file-select { color: var(--on-surface); }
+:root[data-theme="dark"] .file-select option,
+:root[data-theme="dark"] .text-input option {
+    background: var(--surface);
+    color: var(--on-surface);
+}
+
 * { box-sizing: border-box; }
 
 /* The [hidden] attribute must always win over the flex display set on
@@ -123,6 +134,7 @@ body {
     font-size: 16px;
     font-family: var(--font);
     background: var(--surface);
+    color: var(--on-surface);
     transition: border-color .15s, box-shadow .15s;
 }
 .text-input:focus {
@@ -196,6 +208,7 @@ body {
 .icon-btn {
     border: none;
     background: var(--surface);
+    color: var(--on-surface);
     width: 44px; height: 44px;
     border-radius: 50%;
     font-size: 19px;
@@ -272,6 +285,7 @@ body {
 .fmt-btn {
     border: none;
     background: var(--surface);
+    color: var(--on-surface);
     border-radius: 10px;
     min-width: 38px;
     height: 38px;
