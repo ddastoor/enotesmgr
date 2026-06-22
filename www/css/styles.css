@@ -19,6 +19,9 @@
     --danger: #f0a7a7;
     --danger-deep: #c14b4b;
 
+    /* Pastel teal for the user's full name — contrasts with the purple title. */
+    --name-accent: #2f9e91;
+
     --radius-lg: 26px;
     --radius-md: 18px;
     --radius-sm: 12px;
@@ -38,6 +41,7 @@
 
     --accent-soft: #352c52;
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    --name-accent: #7fe3d4;
 }
 
 :root[data-theme="dark"] body {
@@ -224,6 +228,13 @@ body {
     font-size: 16px;
     color: var(--accent-deep);
     margin-top: 8px;
+}
+
+.fullname {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--name-accent);
+    margin-top: 2px;
 }
 
 /* ---- Toolbar -------------------------------------------------------------- */

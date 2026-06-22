@@ -41,6 +41,13 @@ Main page {
                 color: some nice pastel color that contrasts well with the title.
             }
 
+            Fullname display {
+                shows the logged-in google user's full name once a user logs in 
+                position: below the username and above the toolbar
+                font style: bold
+                color: some nice pastel color that contrasts well with the title.
+            }
+
         }
 
 

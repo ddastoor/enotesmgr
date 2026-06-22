@@ -119,6 +119,7 @@ export function render(container) {
                     </div>
                 </div>
                 <div id="username" class="username"></div>
+                <div id="fullname" class="fullname"></div>
             </header>
 
             <section class="toolbar glass">
@@ -152,6 +153,7 @@ export function render(container) {
         <input id="hidden-ins-audio" type="file" accept="audio/*" hidden />`;
 
     container.querySelector("#username").textContent = state.username || "";
+    container.querySelector("#fullname").textContent = state.fullName || "";
 
     // Header buttons
     container.querySelector("#btn-settings").addEventListener("click", () => navigate("settings"));

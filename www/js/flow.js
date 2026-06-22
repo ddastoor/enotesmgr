@@ -12,6 +12,7 @@ export async function loadUserInfo() {
     const user = await getUserInfo();
     state.userEmail = user.emailAddress || "";
     state.username = state.userEmail ? state.userEmail.split("@")[0] : (user.displayName || "user");
+    state.fullName = user.displayName || "";
 }
 
 // Ensure the "eNotes Manager" folder tree exists; populate state.folders.

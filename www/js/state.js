@@ -5,6 +5,7 @@ export const state = {
     accessToken: null,
     userEmail: null,        // full email, e.g. abc@gmail.com
     username: null,         // local part, e.g. abc
+    fullName: null,         // Google account display name, e.g. "Jane Doe"
 
     folders: {              // Drive folder ids, resolved after login
         manager: null,
@@ -30,6 +31,7 @@ export function resetState() {
     state.accessToken = null;
     state.userEmail = null;
     state.username = null;
+    state.fullName = null;
     state.folders = { manager: null, entries: null, config: null, recovery: null };
     state.configJson = null;
     state.settingsJson = null;
