@@ -24,7 +24,9 @@ Settings page {
                             After no user activity for 'session timeout seconds', log out
                         } 
 
-                    }
+                    },
+
+
                 ]
             }
             

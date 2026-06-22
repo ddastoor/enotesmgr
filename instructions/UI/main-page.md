@@ -175,7 +175,8 @@ Main page {
                     }
                 }
 
-                Disable and enable the above buttons appropriately based on the entry currently selected in the file selector dropdown. Additionally, the Save button should be disabled for the dummy file entry and uploaded media files, otherwise enabled.                 
+                Disable and enable the above buttons appropriately based on the file meta data keys "FileType" and "CreationMethod" for the current note. 
+                Additionally, the Save button should be disabled for the dummy file entry and for CreationMethod = "upload", otherwise the Save button should be enabled.                 
 
             }
 

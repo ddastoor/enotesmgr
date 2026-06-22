@@ -95,8 +95,14 @@ const isMediaType = (meta) => meta && meta.FileType !== "richtext";
 
 // Display content using the right control per the FileType metadata key.
 function displayNote(meta, content) {
-    if (isMediaType(meta)) showMedia(content);
-    else showEditor(content);
+    switch (meta && meta.FileType) {
+        case "image":
+        case "audio":
+            showMedia(content, meta.FileType);
+            break;
+        default:
+            showEditor(content);
+    }
 }
 
 // --- render ------------------------------------------------------------------
@@ -431,12 +437,12 @@ function showEditor(html) {
     decorateEmbeds(editor);
 }
 
-function showMedia(dataUrl) {
+function showMedia(dataUrl, fileType) {
     document.getElementById("editor-wrap").hidden = true;
     const viewer = document.getElementById("media-viewer");
     viewer.hidden = false;
     viewer.innerHTML = "";
-    if (dataUrl.startsWith("data:image/")) {
+    if (fileType === "image") {
         const img = document.createElement("img");
         img.src = dataUrl;
         img.className = "viewer-image";
