@@ -67,18 +67,36 @@ Main page {
                     label: "New"
                     tooltip: "Create a new note"
                     on click {
-                        Ask the user to give a filename for the new note. If the filename already exists in entries folder, show an error message 'Filename already exists' and do not proceed. 
+                        Ask the user to give a filename for the new note. Strip any extension from the filename if the user enters one. For e.g. if the user enters 'mynote.txt', then the actual filename used should be 'mynote'.
+                        
+                        If the filename already exists in entries folder, show an error message 'Filename already exists' and do not proceed. 
                         
                         If (user entered a new unique filename) {
 
                             If (an existing note is already loaded \(i.e., file selector is not showing dummy entry ""\) ) {
-                                If (the rich text editor is currently visible and the current rich text editor contents are not saved) {
+                                
+                                If (the creationmethod field is "new" \(and not "upload"\) and the current rich text editor contents are not saved) {
                                     Ask the user if he wants to save the current note or not. If he says yes, save the current note. If he says no, do not save the current note.
                                 }
                             } 
 
-                            Encrypt "" with file password as the new file contents and save the new encrypted file to entries folder.
-                            Update the file selector dropdown with the new filename and clear out the editor area if the rich text editor is currently visible, else make the rich text editor visible with empty contents.
+                            Set the note meta data {
+                                "DateTimeCreated" = current date and time in [date]T[time] format
+                                "DateTimeModified" = same as "DateTimeCreated"
+                                "CreationMethod" = "new"
+                                "FileType" = "richtext"
+                            }
+
+                            
+                            Set the actual note contents to empty.
+
+                            Update the file selector dropdown with the new filename
+
+                            Create this as 'un-encrypted note entry content'
+                            Concatenate metadata + exactly one newline + actual note contents to form the un-encrypted note entry content.
+                            Encrypt this with the file password and save it to the entries folder, then re-fetch and display according to 'Note Display Methods based on FileType' (see ./note-meta-data.md)
+                            
+
                         }
                         
                     }
@@ -90,17 +108,32 @@ Main page {
                     on click {
 
                         If (an existing note is already loaded \(i.e., file selector is not showing dummy entry ""\) ) {
-                            If (the rich text editor is currently visible and the current rich text editor contents are not saved) {
+                            
+                            If (the creationmethod field is "new" \(and not "upload"\) and the current rich text editor contents are not saved) {
                                 Ask the user if he wants to save the current note or not. If he says yes, save the current note. If he says no, do not save the current note.
                             }
                         } 
 
-                        Popup a file dialog for te user to upload the file. If the filename to be uploaded is already present in entries folder, show an error message 'Filename already exists' and do not proceed. 
+                        Popup a file dialog for the user to upload the file. If the filename to be uploaded is already present in entries folder, show an error message 'Filename already exists' and do not proceed. 
                         
                         If (user selected a new unique filename) {
-                            Save the uploaded file to entries folder after encrypting it with the file password.
-                            Add the new filename to the file selector dropdown after sorting the list, then clear out the editor area/media viewer area \(whichever is currently visible\) and load the uploaded media file into the media viewer area. 
+                            Set the note metadata {
+                                "DateTimeCreated" = current date and time in [date]T[time] format
+                                "DateTimeModified" = same as "DateTimeCreated"
+                                "CreationMethod" = "upload"
+                                "FileType" = the filetype of the uploaded file
+                            }
+
                             
+                            Set the actual note contents to the uploaded file contents.
+
+                            Update the file selector dropdown with the new filename
+
+                            Create this as 'un-encrypted note entry content'
+                            Concatenate metadata + exactly one newline + actual note contents to form the un-encrypted note entry content.
+                            Encrypt this with the file password and save it to the entries folder, then re-fetch and display according to 'Note Display Methods based on FileType' (see ./note-meta-data.md)
+                            
+
                         }
 
                         
@@ -150,24 +183,20 @@ Main page {
                 
                 Fetch the selected file from entries folder, decrypt the file using the file password.
 
-                If (the file was previously an uploaded audio or image file) {
-                    Show the media viewer instead of the rich text editor area and display/play the media file.
-                }
-                else if (the file is a note that was previously added by the user) {
-                    Show the rich text editor instead of the media viewer area and display the note in the editor area.
-                }
+                See ./note-meta-data.md and use it to display the note in the app using the right display controls according to note meta data keys FileType and CreationMethod
 
             }
 
             'save the current note' functionality {
-                If (the file was previously an uploaded audio or image file) {
-                    Encrypt the audio or image file contents using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress
-                }
-                else if (the file is a note that was previously added by the user) {
-                    Encrypt the rich text editor's contents using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress
-                }
-            }
+                Set the modified 'DateTimeModified' metadata key to current date and time in the same format as mentioned in metadata keys.
+                
+                Update the actual note content.
+                
 
+                Encrypt the current file (whether an audio, image, or rich text file) using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress.
+
+                See ./note-meta-data.md for logic related to 'On Saving the note, just before encrypting the note file contents'
+            }
 
 
         }

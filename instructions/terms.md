@@ -30,6 +30,16 @@ mapping of what i say to what i mean {
     'new user' => { a user that has never logged in before \(if the config file doesn't exist yet, this means it's a new user\) }
     'existing user' => { a user that has logged in before \(if the config file exists, this means it's an existing user\) }
 
+    'note metadata' or 'note meta data' => { 
+        The embeded metadata extracted from the decrypted notes file contents, stored in the app's memory for that particular, currently loaded note.
+        see ./note-meta-data.md ("un-encrypted note entry content" / "meta data section")
+        }
+
+    'actual note contents' or 'actual note content' => { 
+        The actual content of a note, whether it's a rich text note or an audio or image file. 
+        see ./note-meta-data.md ("un-encrypted note entry content" / "actual note content")
+        }
+
 
     'Invalidate google auth' OR 'Log out' OR 'Sign out' or 'logout' or 'sign out' => { 
 

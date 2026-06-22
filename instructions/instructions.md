@@ -15,6 +15,7 @@ Data Storage { see ./data-storage.md }
 
 UI { see ./UI/ui.md }
 
+Note meta data { see ./note-meta-data.md }
 
 
 When a new user logs in:
