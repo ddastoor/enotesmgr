@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>WASI Libsodium Test</title>
+</head>
+<body>
+
+<h2>WASI Libsodium Encrypt / Decrypt</h2>
+
+<textarea
+    id="data"
+    rows="15"
+    cols="100"
+></textarea>
+
+<br><br>
+
+<input
+    type="password"
+    id="password"
+    placeholder="Password"
+>
+
+<br><br>
+
+<label>
+    <input
+        type="radio"
+        name="mode"
+        value="encrypt"
+        checked
+    >
+    Encrypt
+</label>
+
+<label>
+    <input
+        type="radio"
+        name="mode"
+        value="decrypt"
+    >
+    Decrypt
+</label>
+
+<br><br>
+
+<button id="go">
+    Go
+</button>
+
+<script
+    type="module"
+    src="crypto.js"
+></script>
+
+</body>
+</html>
