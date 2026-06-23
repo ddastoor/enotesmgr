@@ -15,6 +15,14 @@ Master password page {
                 The card is moved up — positioned toward the top of the screen instead of vertically centered (still horizontally centered).
                 The card is also made vertically more compact than on desktop: reduced top/bottom padding, tighter spacing between the items inside the card, and a slightly smaller introductory text, so it occupies less vertical height.
                 This compact + top-aligned treatment must apply ONLY to this "Unlock eNotes" card, not to the other similar-looking cards (login, setup, reset-master-password).
+
+                Inline "go" button inside the master password edit box (mobile only) {
+                    Show a small round button docked inside the master password edit box at its right-hand edge, vertically centered within the box. It displays a right-pointing arrow ("->").
+                    Clicking/tapping it performs the EXACT same action as the 'Unlock' button (the submit action described below) — it is just a convenient shortcut next to the field.
+                    Render the arrow as an inline SVG (not a unicode/emoji character) so it always renders crisply on mobile, consistent with the logout icon rule in ./main-page.md.
+                    Give the edit box enough right-side padding that the typed text never slides underneath this button.
+                    This button appears ONLY on mobile; on desktop it is not shown (the 'Unlock' button alone is used there).
+                }
             }
         }
 

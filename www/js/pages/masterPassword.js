@@ -19,8 +19,11 @@ export function render(container) {
                 <h2 class="page-heading">Unlock eNotes</h2>
                 <p class="muted">Enter your master password (or recovery code if you've forgotten your master password)</p>
 
-                <input id="mp-input" type="password" class="text-input" autocomplete="off"
-                       placeholder="Master password or recovery code" />
+                <div class="mp-input-wrap">
+                    <input id="mp-input" type="password" class="text-input" autocomplete="off"
+                           placeholder="Master password or recovery code" />
+                    <button id="mp-go" type="button" class="mp-go-btn" aria-label="Unlock" title="Unlock"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                </div>
 
                 <div id="mp-error" class="inline-error"></div>
 
@@ -37,6 +40,7 @@ export function render(container) {
     setTimeout(() => input.focus(), 0);
 
     container.querySelector("#mp-unlock").addEventListener("click", () => submit(input, err));
+    container.querySelector("#mp-go").addEventListener("click", () => submit(input, err));
     input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") submit(input, err);
     });

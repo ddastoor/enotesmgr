@@ -212,6 +212,11 @@ body {
 .button-row { display: flex; gap: 12px; margin-top: 12px; }
 .button-row .btn { flex: 1; }
 
+/* Password field "go" button wrapper. The button itself is hidden by default
+   and only shown (positioned inside the field) on mobile — see the mobile block. */
+.mp-input-wrap { position: relative; display: flex; flex-direction: column; }
+.mp-go-btn { display: none; }
+
 /* ---- App header ----------------------------------------------------------- */
 .app-header { padding: 18px 22px 6px; }
 .header-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -530,4 +535,26 @@ body {
     .unlock-page .auth-card .page-heading { margin: 0; }
     .unlock-page .auth-card .muted { margin: 0; font-size: 14px; }
     .unlock-page .auth-card .button-row { margin-top: 4px; }
+
+    /* Mobile-only tiny round "go" button inside the password field; same action
+       as the Unlock button. */
+    .mp-input-wrap .text-input { padding-right: 46px; }
+    .mp-go-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        right: 7px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #2a1857;
+        cursor: pointer;
+        box-shadow: 0 1px 4px rgba(80,60,130,.25);
+    }
+    .mp-go-btn:active { transform: translateY(-50%) scale(.92); }
 }
