@@ -27,6 +27,17 @@ Main page {
             Logout button {
                 tooltip: "Logout"
                 position: to the right of "More Options" button
+
+                icon {
+                    A "logout / sign-out" icon: a circular outline with a short arrow pointing left and exiting out through the left side of the circle (the Remix Icon "logout-circle-line" glyph).
+
+                    It MUST be implemented as an inline SVG embedded directly in the button (vector paths), NOT as a unicode/emoji character or an icon-font glyph. This is deliberate: a power/symbol unicode character (e.g. ⏻) is missing from many mobile system fonts and renders as a broken "tofu" box, whereas an inline SVG renders identically on PC and mobile with no font dependency.
+
+                    The SVG must use fill="currentColor" so it inherits the icon button's text color and therefore looks correct in both light and dark themes. Size it to about 22px square inside the circular 44px icon button, and keep it centered within the button.
+
+                    accessibility: the button has an aria-label of "Logout" and the SVG is aria-hidden.
+                }
+
                 on click {
                     log out
                 }
