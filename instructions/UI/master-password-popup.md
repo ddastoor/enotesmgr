@@ -3,6 +3,19 @@
 
 Master password page {
 
+        layout {
+            The page shows a single card containing, top to bottom: a heading "Unlock eNotes", the introductory text, the master password edit box, an inline error area, and a row with the 'Cancel' and 'Unlock' buttons.
+
+            if (on desktop / PC) {
+                The card is centered both horizontally and vertically in the viewport (the existing default look).
+            }
+            if (on mobile) {
+                The card is moved up — positioned toward the top of the screen instead of vertically centered (still horizontally centered).
+                The card is also made vertically more compact than on desktop: reduced top/bottom padding, tighter spacing between the items inside the card, and a slightly smaller introductory text, so it occupies less vertical height.
+                This compact + top-aligned treatment must apply ONLY to this "Unlock eNotes" card, not to the other similar-looking cards (login, setup, reset-master-password).
+            }
+        }
+
         contents {
 
             An introductory text like {
