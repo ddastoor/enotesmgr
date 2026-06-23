@@ -287,6 +287,7 @@ body {
 
 .editor-toolbar {
     display: flex;
+    align-items: center;
     gap: 6px;
     padding: 10px 12px;
     border-bottom: 1px solid var(--outline);
@@ -305,6 +306,17 @@ body {
     box-shadow: 0 1px 4px rgba(80,60,130,.1);
 }
 .fmt-btn:hover { background: var(--accent-soft); }
+
+/* Undo/Redo: kept small and compact on mobile so they don't eat toolbar space. */
+@media (max-width: 768px) {
+    .fmt-btn-compact {
+        min-width: 28px;
+        height: 28px;
+        font-size: 15px;
+        padding: 0 4px;
+        border-radius: 8px;
+    }
+}
 
 .editor {
     flex: 1;

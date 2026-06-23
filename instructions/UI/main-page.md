@@ -215,6 +215,40 @@ Main page {
 
                 Rich text editor {
                     Toolbar with {
+                        Undo button {
+                            Label: ↶
+                            tooltip: "Undo"
+                            Position: at the far left of the toolbar, before all the other toolbar buttons (Undo first, then Redo, then the rest).
+
+                            Behavior {
+                                Clicking it undoes the last change made in the rich text editor — typed/deleted text as well as inserted or deleted embedded image/audio containers — by stepping back through the editor's native edit history.
+                                It must operate on the SAME single edit history that the keyboard shortcuts and all other edit actions use, so the button and the keyboard always stay in sync (one shared undo/redo stack).
+                                The undo history is per-note and resets when a different note is loaded/opened (a freshly loaded note starts with an empty history).
+                            }
+                        }
+
+                        Redo button {
+                            Label: ↷
+                            tooltip: "Redo"
+                            Position: immediately to the right of the Undo button.
+
+                            Behavior {
+                                Clicking it re-applies the most recently undone change, using the same shared edit history as the Undo button and the keyboard shortcuts.
+                            }
+                        }
+
+                        Undo/Redo keyboard shortcuts {
+                            if (on PC) {
+                                Ctrl+Z (or Cmd+Z on Mac) performs Undo.
+                                Ctrl+Y (or Cmd+Y), and also Ctrl+Shift+Z (or Cmd+Shift+Z), perform Redo.
+                                These shortcuts must drive the exact same shared edit history as the Undo/Redo toolbar buttons, so pressing a shortcut and clicking a button are interchangeable and never diverge.
+                            }
+                            if (on mobile) {
+                                There are no undo/redo keyboard shortcuts (mobile has no reliable undo key); the Undo and Redo toolbar buttons are the only way to undo/redo.
+                                On mobile the Undo and Redo buttons must be rendered small and compact so they take up minimal toolbar space, noticeably smaller than the other toolbar buttons.
+                            }
+                        }
+
                         Bold button 
                         Italic button
                         Underline button

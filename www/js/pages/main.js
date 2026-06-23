@@ -135,6 +135,8 @@ export function render(container) {
             <section class="note-area">
                 <div id="editor-wrap" class="editor-wrap">
                     <div class="editor-toolbar">
+                        <button data-cmd="undo" class="fmt-btn fmt-btn-compact" title="Undo">↶</button>
+                        <button data-cmd="redo" class="fmt-btn fmt-btn-compact" title="Redo">↷</button>
                         <button data-cmd="bold" class="fmt-btn" title="Bold"><b>B</b></button>
                         <button data-cmd="italic" class="fmt-btn" title="Italic"><i>I</i></button>
                         <button data-cmd="underline" class="fmt-btn" title="Underline"><u>U</u></button>
@@ -189,6 +191,23 @@ export function render(container) {
     });
 
     container.querySelector("#editor").addEventListener("input", markDirty);
+
+    // Keyboard undo/redo. Routed through the same execCommand the toolbar
+    // Undo/Redo buttons use, so the keyboard and buttons share one history.
+    // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo.
+    container.querySelector("#editor").addEventListener("keydown", (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const k = e.key.toLowerCase();
+        if (k === "z" && !e.shiftKey) {
+            e.preventDefault();
+            document.execCommand("undo");
+            markDirty();
+        } else if (k === "y" || (k === "z" && e.shiftKey)) {
+            e.preventDefault();
+            document.execCommand("redo");
+            markDirty();
+        }
+    });
 
     // On PC, let the user click an embedded image/audio to select it and then
     // remove it with Delete / Backspace. (Mobile taps already open the image.)
