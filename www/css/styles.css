@@ -321,6 +321,7 @@ body {
 .editor img { max-width: 100%; }
 
 .media-embed {
+    position: relative;
     display: inline-block;
     margin: 4px;
     padding: 4px;
@@ -331,6 +332,36 @@ body {
 }
 .media-embed img { display: block; }
 .mobile-img { max-width: 240px; height: auto; cursor: pointer; }
+
+/* On PC an embed can be clicked to select it, then removed with Delete /
+   Backspace. The selected state is shown with a stronger accent outline. */
+.media-embed.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* A ✕ button on each embed (PC) gives an obvious, keyboard-independent way to
+   delete it. Shown on hover or while the embed is selected. */
+.embed-del {
+    position: absolute;
+    top: -11px;
+    right: -11px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent-deep);
+    color: #fff;
+    font-size: 14px;
+    line-height: 22px;
+    text-align: center;
+    cursor: pointer;
+    display: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+.media-embed:hover .embed-del,
+.media-embed.selected .embed-del { display: block; }
 
 .media-viewer {
     align-items: center;

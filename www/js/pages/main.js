@@ -190,6 +190,10 @@ export function render(container) {
 
     container.querySelector("#editor").addEventListener("input", markDirty);
 
+    // On PC, let the user click an embedded image/audio to select it and then
+    // remove it with Delete / Backspace. (Mobile taps already open the image.)
+    if (!isMobile()) wireEmbedSelection(container.querySelector("#editor"));
+
     // Hidden file inputs
     container.querySelector("#hidden-upload").addEventListener("change", onUploadFile);
     container.querySelector("#hidden-ins-image").addEventListener("change", onInsertImage);
@@ -272,7 +276,7 @@ async function saveCurrentNote() {
     if (!current || isMediaType(current.meta)) return;
     // Update DateTimeModified and the actual content, then re-serialize and encrypt.
     const meta = { ...current.meta, DateTimeModified: nowStamp() };
-    const content = document.getElementById("editor").innerHTML;
+    const content = readEditorContent();
     await withStatus("Saving...", async () => {
         const cipher = encryptData(serializeNote(meta, content), filePassword());
         await updateTextFile(current.id, cipher);
@@ -477,6 +481,7 @@ async function onInsertImage(e) {
         img.addEventListener("click", () => openInNewWindow(dataUrl));
     }
     span.appendChild(img);
+    addEmbedDeleteButton(span);
     insertNodeAtCursor(span);
     markDirty();
 }
@@ -493,17 +498,96 @@ async function onInsertAudio(e) {
     audio.controls = true;
     audio.src = dataUrl;
     span.appendChild(audio);
+    addEmbedDeleteButton(span);
     insertNodeAtCursor(span);
     markDirty();
 }
 
-// Re-attach mobile tap handlers to embedded images after loading saved HTML.
+// Re-decorate embeds after loading saved HTML: mobile tap-to-open handlers, and
+// on PC the ✕ delete button on each embed.
 function decorateEmbeds(editor) {
-    if (!isMobile()) return;
-    editor.querySelectorAll(".media-embed img").forEach((img) => {
-        img.classList.add("mobile-img");
-        img.addEventListener("click", () => openInNewWindow(img.src));
+    if (isMobile()) {
+        editor.querySelectorAll(".media-embed img").forEach((img) => {
+            img.classList.add("mobile-img");
+            img.addEventListener("click", () => openInNewWindow(img.src));
+        });
+        return;
+    }
+    editor.querySelectorAll(".media-embed").forEach(addEmbedDeleteButton);
+}
+
+// Add a ✕ button to an embed (PC only) so it can be removed with a click.
+// Idempotent: never adds a second button to the same embed.
+function addEmbedDeleteButton(embed) {
+    if (isMobile()) return;
+    if (embed.querySelector(":scope > .embed-del")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "embed-del";
+    btn.title = "Remove";
+    btn.textContent = "✕";
+    btn.contentEditable = "false";
+    embed.appendChild(btn);
+}
+
+// Serialize the editor's note content, stripping runtime-only decorations (the
+// ✕ delete buttons and the selection highlight) so they never get persisted.
+function readEditorContent() {
+    const clone = document.getElementById("editor").cloneNode(true);
+    clone.querySelectorAll(".embed-del").forEach((el) => el.remove());
+    clone.querySelectorAll(".media-embed.selected")
+        .forEach((el) => el.classList.remove("selected"));
+    return clone.innerHTML;
+}
+
+// Allow embedded media (images / audio) to be selected by clicking and then
+// removed with Delete or Backspace. Embeds are contenteditable="false", so the
+// browser won't let the caret enter them or delete them normally; we handle the
+// selection and removal ourselves.
+function wireEmbedSelection(editor) {
+    const clearSelection = () =>
+        editor.querySelectorAll(".media-embed.selected")
+            .forEach((el) => el.classList.remove("selected"));
+
+    editor.addEventListener("click", (e) => {
+        // Clicking the ✕ button removes the embed outright.
+        if (e.target.closest(".embed-del")) {
+            const embed = e.target.closest(".media-embed");
+            if (embed) { embed.remove(); markDirty(); }
+            return;
+        }
+        const embed = e.target.closest(".media-embed");
+        clearSelection();
+        if (embed) embed.classList.add("selected");
     });
+
+    // The Delete/Backspace and outside-click handlers live on `document` because
+    // a contenteditable="false" embed does NOT give keyboard focus to the
+    // editor, so a keydown listener on the editor itself would never fire.
+    // Registered once at module level so re-rendering the page doesn't stack up
+    // duplicate document listeners.
+    if (!wireEmbedSelection.bound) {
+        const clearAll = () =>
+            document.querySelectorAll(".media-embed.selected")
+                .forEach((el) => el.classList.remove("selected"));
+
+        // Clicking anywhere outside an editor drops the selection highlight.
+        document.addEventListener("click", (e) => {
+            if (e.target.closest(".editor")) return;
+            clearAll();
+        });
+
+        document.addEventListener("keydown", (e) => {
+            if (e.key !== "Delete" && e.key !== "Backspace") return;
+            const selected = document.querySelector(".media-embed.selected");
+            if (!selected) return;
+            e.preventDefault();
+            selected.remove();
+            markDirty();
+        });
+
+        wireEmbedSelection.bound = true;
+    }
 }
 
 function insertNodeAtCursor(node) {

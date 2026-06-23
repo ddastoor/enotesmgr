@@ -24,6 +24,13 @@ class SPAHandler(SimpleHTTPRequestHandler):
         # (No COEP: the GIS script and Google endpoints don't send CORP headers,
         # and the WASM crypto here doesn't require cross-origin isolation.)
         self.send_header("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+        # Dev server: never let the browser cache assets, otherwise edited JS/CSS
+        # (which carry no Cache-Control from SimpleHTTPRequestHandler) get served
+        # stale from the browser's heuristic cache and code changes appear to do
+        # nothing until a hard refresh.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         super().end_headers()
 
     def log_message(self, fmt, *args):

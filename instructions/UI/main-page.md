@@ -250,6 +250,30 @@ Main page {
 
                     }
 
+                    Embedded media selection and deletion {
+                        Embedded images and audio players are inserted as non-editable "containers", so the text caret cannot enter them and the browser will NOT delete them on its own. The app must handle this explicitly.
+
+                        if (on PC) {
+                            There are two ways to delete an embedded image or audio container, both of which remove it only from the note, not from the user's device:
+
+                            1. Select-and-delete with the keyboard {
+                                Clicking an embedded image or audio container selects it and shows a clear selection highlight (an accent outline) around that container.
+                                While an embed is selected, pressing Delete or Backspace removes that embed from the rich text editor.
+                                The Delete/Backspace handling must work even when the embed container (which is non-editable) does not hold the text caret/keyboard focus.
+                                Clicking elsewhere in the editor, or outside the editor, clears the selection highlight.
+                            }
+
+                            2. The ✕ delete button {
+                                Each embedded image or audio container shows a small ✕ delete button at its top-right corner. The button appears when the user hovers over the container or when the container is selected, and is hidden otherwise.
+                                Clicking the ✕ button removes that embed immediately.
+                            }
+
+                            For an embedded audio container, its play/pause controls must still work normally even though the container can be selected and shows the ✕ button.
+
+                            The ✕ delete button and the selection highlight are runtime-only decorations: they must NEVER be persisted into the saved note content.
+                        }
+                    }
+
                     Rich text editing area {
                         should have a vertical and horizontal scrollbar if needed both on PC and mobile.
                         should have a placeholder text "Write your note here..."
