@@ -540,6 +540,21 @@ function readEditorContent() {
     return clone.innerHTML;
 }
 
+// Remove an embed via execCommand so the removal is recorded on the
+// contenteditable native undo stack (Ctrl+Z). A direct embed.remove() mutates
+// the DOM outside that stack and so cannot be undone.
+function deleteEmbed(embed) {
+    const editor = document.getElementById("editor");
+    editor.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNode(embed);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand("delete");
+    markDirty();
+}
+
 // Allow embedded media (images / audio) to be selected by clicking and then
 // removed with Delete or Backspace. Embeds are contenteditable="false", so the
 // browser won't let the caret enter them or delete them normally; we handle the
@@ -553,7 +568,7 @@ function wireEmbedSelection(editor) {
         // Clicking the ✕ button removes the embed outright.
         if (e.target.closest(".embed-del")) {
             const embed = e.target.closest(".media-embed");
-            if (embed) { embed.remove(); markDirty(); }
+            if (embed) deleteEmbed(embed);
             return;
         }
         const embed = e.target.closest(".media-embed");
@@ -582,8 +597,7 @@ function wireEmbedSelection(editor) {
             const selected = document.querySelector(".media-embed.selected");
             if (!selected) return;
             e.preventDefault();
-            selected.remove();
-            markDirty();
+            deleteEmbed(selected);
         });
 
         wireEmbedSelection.bound = true;

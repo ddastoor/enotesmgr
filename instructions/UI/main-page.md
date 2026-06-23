@@ -270,6 +270,8 @@ Main page {
 
                             For an embedded audio container, its play/pause controls must still work normally even though the container can be selected and shows the ✕ button.
 
+                            Deleting an embed (by either method) must be undoable with Ctrl+Z, exactly like deleting plain text — pressing Ctrl+Z brings the deleted image/audio container back. So the deletion has to go through the editor's normal undo history, not a raw DOM removal that the browser's undo cannot track.
+
                             The ✕ delete button and the selection highlight are runtime-only decorations: they must NEVER be persisted into the saved note content.
                         }
                     }
