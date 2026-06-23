@@ -6,6 +6,8 @@ Master password page {
         layout {
             The page shows a single card containing, top to bottom: a heading "Unlock eNotes", the introductory text, the master password edit box, an inline error area, and a row with the 'Cancel' and 'Unlock' buttons.
 
+            The "Unlock eNotes" heading must NOT use the default plain/dark text color (it looks dull). Instead give it a lively pastel gradient fill — the same gradient treatment used for the "eNotes" brand title (a left-to-right pastel blend of the deep accent purple into pastel pink into pastel blue, applied as a clipped gradient on the text). This must look good in both light and dark themes (use the theme's pastel/accent color variables so it adapts). This styling applies on both desktop and mobile, and only to this card's heading.
+
             if (on desktop / PC) {
                 The card is centered both horizontally and vertically in the viewport (the existing default look).
             }
