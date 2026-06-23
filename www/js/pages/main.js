@@ -511,15 +511,17 @@ function decorateEmbeds(editor) {
             img.classList.add("mobile-img");
             img.addEventListener("click", () => openInNewWindow(img.src));
         });
-        return;
     }
     editor.querySelectorAll(".media-embed").forEach(addEmbedDeleteButton);
 }
 
-// Add a ✕ button to an embed (PC only) so it can be removed with a click.
+// Add a ✕ button to an embed so it can be removed with a click/tap.
 // Idempotent: never adds a second button to the same embed.
+//   - PC: the badge shows on hover/selection (CSS) and the ✕ click is handled by
+//     the delegated handler in wireEmbedSelection().
+//   - Mobile: the badge is always visible (CSS); since mobile has no easy undo,
+//     the tap here confirms before deleting.
 function addEmbedDeleteButton(embed) {
-    if (isMobile()) return;
     if (embed.querySelector(":scope > .embed-del")) return;
     const btn = document.createElement("button");
     btn.type = "button";
@@ -527,6 +529,13 @@ function addEmbedDeleteButton(embed) {
     btn.title = "Remove";
     btn.textContent = "✕";
     btn.contentEditable = "false";
+    if (isMobile()) {
+        btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            const kind = embed.querySelector("audio") ? "audio" : "image";
+            if (await showConfirm(`Remove this ${kind}?`, "Remove")) deleteEmbed(embed);
+        });
+    }
     embed.appendChild(btn);
 }
 

@@ -274,6 +274,18 @@ Main page {
 
                             The ✕ delete button and the selection highlight are runtime-only decorations: they must NEVER be persisted into the saved note content.
                         }
+
+                        if (on mobile) {
+                            On mobile, tapping an embedded image opens it in a new browser tab and long-pressing it brings up the browser's own image menu (download etc.), so those gestures are reserved and are NOT used for deletion.
+
+                            To delete an embedded image or audio container, each container shows a ✕ delete button at its top-right corner that is ALWAYS visible (there is no hover on mobile) and sized large enough to tap comfortably.
+
+                            Tapping the ✕ button first asks the user to confirm ("Remove this image?" / "Remove this audio?"), and only removes the embed if confirmed. The confirmation is required because mobile has no easy undo (unlike Ctrl+Z on PC). Deletion removes the embed only from the note, not from the user's device.
+
+                            For an embedded audio container, its play/pause controls must still work normally even though the container shows the ✕ button.
+
+                            The ✕ delete button is a runtime-only decoration: it must NEVER be persisted into the saved note content.
+                        }
                     }
 
                     Rich text editing area {

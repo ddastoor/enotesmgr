@@ -363,6 +363,19 @@ body {
 .media-embed:hover .embed-del,
 .media-embed.selected .embed-del { display: block; }
 
+/* Mobile has no hover, so the ✕ badge is always visible and sized for touch. */
+@media (max-width: 768px) {
+    .embed-del {
+        display: block;
+        top: -14px;
+        right: -14px;
+        width: 32px;
+        height: 32px;
+        font-size: 17px;
+        line-height: 32px;
+    }
+}
+
 .media-viewer {
     align-items: center;
     justify-content: center;
