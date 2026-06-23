@@ -216,6 +216,9 @@ body {
     width: 44px; height: 44px;
     border-radius: 50%;
     font-size: 19px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(80,60,130,.12);
     transition: transform .08s, background .15s;
