@@ -28,6 +28,20 @@ export function hideStatus() {
     if (statusEl) statusEl.style.display = "none";
 }
 
+// Briefly flash an informational status message (no spinner, since no work is
+// happening), then auto-hide it. Used for quick notices like "Nothing to save..".
+export async function flashStatus(message, ms = 1300) {
+    showStatus(message);
+    const spinner = statusEl.querySelector(".status-spinner");
+    if (spinner) spinner.style.display = "none";
+    try {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+    } finally {
+        hideStatus();
+        if (spinner) spinner.style.display = ""; // restore for the next showStatus()
+    }
+}
+
 // Run an async function while showing a status message; always hides after.
 export async function withStatus(message, fn) {
     showStatus(message);

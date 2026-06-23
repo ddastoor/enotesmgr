@@ -207,14 +207,41 @@ Main page {
             }
 
             'save the current note' functionality {
-                Set the modified 'DateTimeModified' metadata key to current date and time in the same format as mentioned in metadata keys.
-                
-                Update the actual note content.
-                
 
-                Encrypt the current file (whether an audio, image, or rich text file) using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress.
+                Skip-unchanged optimization (avoid pointless Google Drive writes) {
+                    Goal: if the note content has not actually changed since it was last loaded or last saved, the save must be a complete no-op — no metadata change, no encryption, and NO write/round-trip to Google Drive.
 
-                See ./note-meta-data.md for logic related to 'On Saving the note, just before encrypting the note file contents'
+                    How to detect "unchanged" {
+                        Maintain a stored "last saved content hash" for the currently loaded note: a SHA-256 hash (hex) computed over the note CONTENT ONLY — i.e. excluding the metadata section and the single newline that separates the metadata section from the content (see ./note-meta-data.md for the metadata-section + single-newline + content file layout).
+
+                        The hash must be computed over the exact same content serialization that a save would write (the editor's content with any runtime-only decorations such as the embedded-media ✕ delete buttons and selection highlight removed). Compute the load-time/baseline hash and the save-time hash through that same serialization so that an unchanged note hashes identically. (Rationale: when content is loaded into the editor the browser may normalize the HTML, so hashing the raw stored bytes vs the editor's re-serialized content could differ even with no edit; using one consistent serialization avoids that.)
+
+                        Set/refresh this stored hash:
+                            - when a rich text note is loaded/opened (baseline = hash of the loaded content),
+                            - when a brand-new rich text note is created (baseline = hash of its empty content),
+                            - after every successful real save (baseline = hash of the content just saved).
+                        When no rich text note is loaded (dummy entry selected, or a media/image/audio note), there is no stored hash.
+                    }
+
+                    On a save request, recompute the SHA-256 of the current content and compare it to the stored "last saved content hash":
+                        if (the two hashes are equal) {
+                            Do nothing — no DateTimeModified update, no encryption, no Drive write (this is the no-op).
+                            If the save was triggered by the user explicitly clicking the Save button, briefly flash the transient status message "Nothing to save.." in the centered status overlay for about 600 ms (short, just long enough to read) and then auto-hide it. This informational flash shows NO spinner (nothing is actually working). Do NOT show this flash for internal/automatic saves such as the "save before switching notes?" flow.
+                        }
+                        else {
+                            Proceed with the actual save below, and update the stored "last saved content hash" to the new content's hash afterwards.
+                        }
+                }
+
+                Actual save (only when the content changed) {
+                    Set the modified 'DateTimeModified' metadata key to current date and time in the same format as mentioned in metadata keys.
+
+                    Update the actual note content.
+
+                    Encrypt the current file (whether an audio, image, or rich text file) using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress.
+
+                    See ./note-meta-data.md for logic related to 'On Saving the note, just before encrypting the note file contents'
+                }
             }
 
 

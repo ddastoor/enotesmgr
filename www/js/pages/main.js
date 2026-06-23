@@ -10,15 +10,34 @@ import {
     findChild,
 } from "../drive.js";
 import { encryptData, decryptData } from "../crypto/crypto.js";
-import { withStatus, showAlert, showPrompt, showConfirm, showYesNo } from "../lib/dialogs.js";
+import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo } from "../lib/dialogs.js";
 import { openMenu } from "./menu.js";
 
 // --- page-local state --------------------------------------------------------
 let entries = [];          // [{id, name}] sorted alphabetically
 let current = null;        // {id, name, meta} or null (dummy); see note-meta-data.md
 let dirty = false;
+// SHA-256 (hex) of the loaded note's content, used to skip a Save when the
+// content is unchanged. null when no richtext note is loaded. See
+// snapshotContentHash() / saveCurrentNote().
+let savedContentHash = null;
 
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+// SHA-256 of a string as a lowercase hex digest (Web Crypto; secure-context).
+async function sha256Hex(str) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Snapshot the current editor content's hash as the "last saved" baseline, so a
+// later Save can be skipped when nothing changed. Computed from the exact same
+// serialization (readEditorContent) that Save uses, so an unchanged note hashes
+// identically and the Save becomes a no-op.
+async function snapshotContentHash() {
+    savedContentHash = await sha256Hex(readEditorContent());
+}
 
 // --- embedded note metadata --------------------------------------------------
 // Each note entry file is, before encryption, a metadata section + exactly one
@@ -260,6 +279,7 @@ async function onSelectChange(e) {
     if (!name) {
         current = null;
         showEditor("");
+        savedContentHash = null;
         dirty = false;
         updateButtons();
         return;
@@ -277,6 +297,8 @@ async function loadNote(entry) {
         });
         current = { id: entry.id, name: entry.name, meta };
         displayNote(meta, content);
+        if (isMediaType(meta)) savedContentHash = null;
+        else await snapshotContentHash();
         dirty = false;
         updateButtons();
     } catch (e) {
@@ -291,23 +313,35 @@ async function onRefresh() {
     if (entry) await loadNote(entry);
 }
 
+// Returns true if it actually wrote to Drive, false if it was a no-op
+// (content unchanged) so callers can react (e.g. flash "Nothing to save..").
 async function saveCurrentNote() {
-    if (!current || isMediaType(current.meta)) return;
-    // Update DateTimeModified and the actual content, then re-serialize and encrypt.
-    const meta = { ...current.meta, DateTimeModified: nowStamp() };
+    if (!current || isMediaType(current.meta)) return false;
     const content = readEditorContent();
+    // Skip the Drive round trip entirely if the content is byte-for-byte what we
+    // last loaded/saved (compared via SHA-256 of the content only).
+    const hash = await sha256Hex(content);
+    if (hash === savedContentHash) {
+        dirty = false;
+        return false;
+    }
+    // Content changed: update DateTimeModified, re-serialize and encrypt.
+    const meta = { ...current.meta, DateTimeModified: nowStamp() };
     await withStatus("Saving...", async () => {
         const cipher = encryptData(serializeNote(meta, content), filePassword());
         await updateTextFile(current.id, cipher);
     });
     current.meta = meta;
+    savedContentHash = hash;
     dirty = false;
+    return true;
 }
 
 async function onSave() {
     if (!current || isMediaType(current.meta)) return;
     try {
-        await saveCurrentNote();
+        const saved = await saveCurrentNote();
+        if (!saved) await flashStatus("Nothing to save..", 600);
     } catch (e) {
         console.error(e);
         await showAlert("Could not save this note.", "Error");
@@ -356,6 +390,7 @@ async function onNew() {
         rebuildSelect(name);
         current = { id: created.id, name, meta };
         displayNote(meta, "");
+        await snapshotContentHash();
         dirty = false;
         updateButtons();
     } catch (e) {
