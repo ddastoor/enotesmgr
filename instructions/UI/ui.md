@@ -4,6 +4,16 @@ General Web SPA UI Style instructions {
 
     Use different pastel colors for UI elements and avoid using too much of black and white for UI elements like buttons, etc, but don't have a general colored theme.
 
+    Dark theme contrast {
+        In theme=dark, every interactive element's label/text must stay contrasty and clearly readable against the dark surface. In particular keep these contrasty:
+            - tonal buttons (the accent-labelled buttons)
+            - icon buttons
+            - format buttons
+            - text input fields
+            - file-selection dropdowns, including BOTH the closed control text and the open option list.
+        Whenever you add a new button or text/dropdown control, make sure its label is given an explicit light text color in dark theme so it does not come out dim or invisible.
+    }
+
     Make sure the UI is well spaced out on the PC browser and looks great on a wide range of screen sizes.
 
     For the mobiles UI version, the UI should look great too and fit on different phone sizes. Take care of all the resize and fitting of all the UI elements properly on different phone sizes. Make sure all the elements scroll peoperly on mobile screens.
