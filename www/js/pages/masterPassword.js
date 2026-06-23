@@ -14,7 +14,7 @@ let backGuard = null;
 
 export function render(container) {
     container.innerHTML = `
-        <div class="page page-centered">
+        <div class="page page-centered unlock-page">
             <div class="auth-card">
                 <h2 class="page-heading">Unlock eNotes</h2>
                 <p class="muted">Enter your master password (or recovery code if you've forgotten your master password)</p>

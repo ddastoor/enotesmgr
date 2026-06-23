@@ -514,5 +514,12 @@ body {
     .settings-scroll, .recovery-body { margin: 0 12px; }
     .settings-actions, .recovery-actions { margin: 14px 12px; }
     .icon-btn { width: 40px; height: 40px; font-size: 17px; }
-    .auth-card { padding: 28px 22px; }
+
+    /* Unlock eNotes card only: move it up (top-aligned instead of vertically
+       centered) and make it vertically more compact. */
+    .unlock-page.page-centered { justify-content: flex-start; }
+    .unlock-page .auth-card { padding: 18px 22px; gap: 8px; }
+    .unlock-page .auth-card .page-heading { margin: 0; }
+    .unlock-page .auth-card .muted { margin: 0; font-size: 14px; }
+    .unlock-page .auth-card .button-row { margin-top: 4px; }
 }
