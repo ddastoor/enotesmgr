@@ -404,6 +404,9 @@ async function loadNote(entry) {
         else await snapshotContentHash();
         dirty = false;
         updateButtons();
+        // For a richtext note, put the caret in the editor so the user can type
+        // right away.
+        if (!isMediaType(meta)) document.getElementById("editor").focus();
     } catch (e) {
         console.error(e);
         await showAlert("Could not open this note.", "Error");

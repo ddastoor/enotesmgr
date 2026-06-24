@@ -226,6 +226,8 @@ Main page {
 
                 See ./note-meta-data.md and use it to display the note in the app using the right display controls according to note meta data keys FileType and CreationMethod
 
+                After the note is loaded and displayed, if the note's appProperty "FileType" is "richtext", put the cursor/focus into the rich text editing area so the user can start typing right away. (This applies on both PC and mobile. For non-richtext / media notes, do not move focus into the editor.)
+
             }
 
             'save the current note' functionality {
