@@ -52,7 +52,7 @@ export async function withStatus(message, fn) {
     }
 }
 
-function buildModal({ title, body, buttons }) {
+export function buildModal({ title, body, buttons }) {
     return new Promise((resolve) => {
         const backdrop = document.createElement("div");
         backdrop.className = "modal-backdrop";

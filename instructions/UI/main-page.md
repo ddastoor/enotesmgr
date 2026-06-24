@@ -3,6 +3,14 @@
 
 Main page {
 
+    on reaching this page right after a login (whether via master password or as a new user) {
+        Check the 'recovery file count'.
+        if (recovery file count <= 1 \(i.e. 1 or 0\) AND the 'one-or-no-recovery-files-left-dont-ask-marker-file' does NOT exist) {
+            Redirect to UI @ ./one-or-zero-recovery-code-left-popup.md (shown as a popup over this page).
+        }
+        This check only runs on the login that lands here; navigating back to the main page from within an authenticated session (e.g. returning from the settings or recovery-codes page) does NOT re-trigger it.
+    }
+
     contents {
 
         header area {

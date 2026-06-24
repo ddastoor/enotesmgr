@@ -28,7 +28,7 @@
                     }
 
                     Download the 10 recovery codes listed line by line in 'enotes_recovery_codes.txt' to the user's device and inform the user via a popup with message 'Recovery codes downloaded. Save them very safely!'
-                    Delete the 'only-one-recovery-file-left-dont-ask-marker-file' from the recovery folder if it exists.
+                    Delete the 'one-or-no-recovery-files-left-dont-ask-marker-file' from the recovery folder if it exists.
 
                 }
              }

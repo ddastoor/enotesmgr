@@ -1,10 +1,10 @@
 
 
-Only 1 recovery code left popup { 
+1 or 0 recovery codes left popup { 
 
-    popup title - "Only 1 recovery code left"
+    popup title - "1 or no recovery codes left"
     popup description { 
-        "You have only 1 recovery code left. Generate more recovery codes to stay safe." 
+        "You have 1 or no recovery codes left. Generate more recovery codes to stay safe." 
     }
     
     'Generate more' button { 
@@ -20,7 +20,7 @@ Only 1 recovery code left popup {
     
     'Don\'t ask again' button { 
         on click { 
-            Create 'only-one-recovery-file-left-dont-ask-marker-file' as an empty file
+            Create 'one-or-no-recovery-files-left-dont-ask-marker-file' as an empty file
             Close the popup and return to caller
         }    
     } 

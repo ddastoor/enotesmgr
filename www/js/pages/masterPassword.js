@@ -9,6 +9,7 @@ import { appMetaProps } from "../lib/meta.js";
 import { decryptData, encryptData } from "../crypto/crypto.js";
 import { withStatus, showAlert } from "../lib/dialogs.js";
 import { listRecoveryFiles, findRecoveryFile } from "../recovery.js";
+import { maybeShowRecoveryReminder } from "../recoveryReminder.js";
 import { promptResetPassword } from "./resetMasterPassword.js";
 
 let backGuard = null;
@@ -126,6 +127,7 @@ async function handleMasterPassword(masterPassword, err) {
 
     removeBackGuard();
     navigate("main");
+    await maybeShowRecoveryReminder();
 }
 
 async function handleRecoveryCode(code, err) {

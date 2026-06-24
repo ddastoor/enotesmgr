@@ -77,3 +77,14 @@ export async function findRecoveryFile(code) {
     const hash = await sha256Hex(code);
     return findChild(state.folders.recovery, hash);
 }
+
+// True if the "only one recovery left / don't ask again" marker file exists.
+export async function hasDontAskMarker() {
+    return !!(await findChild(state.folders.recovery, ONE_RECOVERY_LEFT_MARKER));
+}
+
+// Create the "don't ask again" marker as an empty file (no-op if already present).
+export async function createDontAskMarker() {
+    if (await hasDontAskMarker()) return;
+    await createTextFile(ONE_RECOVERY_LEFT_MARKER, "", state.folders.recovery);
+}

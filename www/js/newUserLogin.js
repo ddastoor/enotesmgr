@@ -14,6 +14,7 @@ import { appMetaProps } from "./lib/meta.js";
 import { encryptData } from "./crypto/crypto.js";
 import { withStatus, showAlert } from "./lib/dialogs.js";
 import { generateRecoveryCodes } from "./recovery.js";
+import { maybeShowRecoveryReminder } from "./recoveryReminder.js";
 
 export async function runNewUserLogin(masterPassword, generateRecovery) {
     await withStatus("Setting up your account...", async () => {
@@ -37,4 +38,5 @@ export async function runNewUserLogin(masterPassword, generateRecovery) {
     }
 
     navigate("main");
+    await maybeShowRecoveryReminder();
 }
