@@ -31,13 +31,20 @@ mapping of what i say to what i mean {
     'existing user' => { a user that has logged in before \(if the config file exists, this means it's an existing user\) }
 
     'note metadata' or 'note meta data' => { 
-        The embeded metadata extracted from the decrypted notes file contents, stored in the app's memory for that particular, currently loaded note.
-        see ./note-meta-data.md ("un-encrypted note entry content" / "meta data section")
+        The metadata read from the entry's Google Drive custom file properties (appProperties), stored in the app's memory for that particular, currently loaded note.
+        see ./note-meta-data.md ("note metadata storage")
         }
 
     'actual note contents' or 'actual note content' => { 
         The actual content of a note, whether it's a rich text note or an audio or image file. 
         see ./note-meta-data.md ("un-encrypted note entry content" / "actual note content")
+        }
+
+    'appProperties' or 'custom file properties' or 'file properties' => {
+        The application-private custom properties the Google Drive API stores per Drive file/folder (the Files resource "appProperties").
+        Clear-text, app-scoped key/value pairs (only this app can read/write them); they are never encrypted.
+        Used to store note metadata and non-note app file metadata - see ./note-meta-data.md ("note metadata storage" and "non-note app file metadata").
+        (If the public, cross-app property bag is ever meant instead it will be called "public properties" / Files resource "properties".)
         }
 
 

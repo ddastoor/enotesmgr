@@ -11,6 +11,7 @@ import {
 } from "../drive.js";
 import { encryptData, decryptData } from "../crypto/crypto.js";
 import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo } from "../lib/dialogs.js";
+import { nowStamp } from "../lib/meta.js";
 import { openMenu } from "./menu.js";
 
 // --- page-local state --------------------------------------------------------
@@ -39,19 +40,18 @@ async function snapshotContentHash() {
     savedContentHash = await sha256Hex(readEditorContent());
 }
 
-// --- embedded note metadata --------------------------------------------------
-// Each note entry file is, before encryption, a metadata section + exactly one
-// newline + the actual content. See instructions/note-meta-data.md.
+// --- note metadata -----------------------------------------------------------
+// A note entry's metadata (DateTimeCreated/DateTimeModified/CreationMethod/
+// FileType) is stored as Drive custom file properties (appProperties), NOT in the
+// file contents - the encrypted file holds only the actual note content. See
+// instructions/note-meta-data.md. nowStamp() lives in ../lib/meta.js.
+//
+// Legacy fallback: notes written before this change embedded the metadata in the
+// content as a "[metadata begin]...[metadata end]" section followed by one
+// newline. parseNote() below reads that old layout when a file has no
+// appProperties; such notes migrate to appProperties the next time they're saved.
 const META_BEGIN = "[metadata begin]";
 const META_END = "[metadata end]";
-
-// Current date/time in the [date]T[time] format, e.g. 2026-01-21T10:30.
-function nowStamp() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-        `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // Map an uploaded file's MIME type to an allowed FileType, or null if neither
 // image nor audio.
@@ -66,16 +66,9 @@ function stripExtension(name) {
     return name.replace(/\.[^.]+$/, "");
 }
 
-// Build the un-encrypted note entry content: metadata section + one newline + content.
-function serializeNote(meta, content) {
-    const lines = [META_BEGIN];
-    for (const [k, v] of Object.entries(meta)) lines.push(`${k} = ${v}`);
-    lines.push(META_END);
-    return lines.join("\n") + "\n" + content;
-}
-
-// Parse decrypted note entry text into { meta, content }. Files written before
-// metadata was embedded have no metadata section, so we infer it from the content.
+// Parse a legacy decrypted note entry (metadata embedded in the content) into
+// { meta, content }. Only used as a fallback for notes that have no appProperties
+// metadata; the oldest files have no metadata section at all, so we infer it.
 function parseNote(text) {
     const beginIdx = text.indexOf(META_BEGIN);
     const endIdx = text.indexOf(META_END);
@@ -264,7 +257,7 @@ function rebuildSelect(selectedName = "") {
 async function refreshEntries(selectedName = "") {
     try {
         const files = await withStatus("Loading...", () => listChildren(state.folders.entries));
-        entries = files.map((f) => ({ id: f.id, name: f.name }));
+        entries = files.map((f) => ({ id: f.id, name: f.name, meta: f.appProperties || null }));
         sortEntries();
         rebuildSelect(selectedName);
         updateButtons();
@@ -293,7 +286,14 @@ async function loadNote(entry) {
     try {
         const { meta, content } = await withStatus("Loading...", async () => {
             const cipher = await downloadText(entry.id);
-            return parseNote(decryptData(cipher, filePassword()));
+            const decrypted = decryptData(cipher, filePassword());
+            // Metadata comes from the file's appProperties; the decrypted file is
+            // pure content. Fall back to the legacy embedded-metadata layout for
+            // notes saved before this change (they have no appProperties).
+            if (entry.meta && entry.meta.FileType) {
+                return { meta: entry.meta, content: decrypted };
+            }
+            return parseNote(decrypted);
         });
         current = { id: entry.id, name: entry.name, meta };
         displayNote(meta, content);
@@ -325,13 +325,16 @@ async function saveCurrentNote() {
         dirty = false;
         return false;
     }
-    // Content changed: update DateTimeModified, re-serialize and encrypt.
+    // Content changed: encrypt the content alone and update the file's metadata
+    // (appProperties) with a refreshed DateTimeModified.
     const meta = { ...current.meta, DateTimeModified: nowStamp() };
     await withStatus("Saving...", async () => {
-        const cipher = encryptData(serializeNote(meta, content), filePassword());
-        await updateTextFile(current.id, cipher);
+        const cipher = encryptData(content, filePassword());
+        await updateTextFile(current.id, cipher, meta);
     });
     current.meta = meta;
+    const listed = entries.find((x) => x.id === current.id);
+    if (listed) listed.meta = meta;
     savedContentHash = hash;
     dirty = false;
     return true;
@@ -382,10 +385,10 @@ async function onNew() {
             FileType: "richtext",
         };
         const created = await withStatus("Creating...", async () => {
-            const cipher = encryptData(serializeNote(meta, ""), filePassword());
-            return createTextFile(name, cipher, state.folders.entries);
+            const cipher = encryptData("", filePassword());
+            return createTextFile(name, cipher, state.folders.entries, meta);
         });
-        entries.push({ id: created.id, name });
+        entries.push({ id: created.id, name, meta });
         sortEntries();
         rebuildSelect(name);
         current = { id: created.id, name, meta };
@@ -427,10 +430,10 @@ async function onUploadFile(e) {
             FileType: fileType,
         };
         const created = await withStatus("Uploading...", async () => {
-            const cipher = encryptData(serializeNote(meta, dataUrl), filePassword());
-            return createTextFile(file.name, cipher, state.folders.entries);
+            const cipher = encryptData(dataUrl, filePassword());
+            return createTextFile(file.name, cipher, state.folders.entries, meta);
         });
-        entries.push({ id: created.id, name: file.name });
+        entries.push({ id: created.id, name: file.name, meta });
         sortEntries();
         rebuildSelect(file.name);
         current = { id: created.id, name: file.name, meta };

@@ -33,23 +33,24 @@ function escapeQuery(name) {
     return name.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
 
-// Find a non-trashed child of parentId by exact name. Returns {id,name} or null.
+// Find a non-trashed child of parentId by exact name. Returns {id,name,appProperties}
+// or null. appProperties holds the file's metadata (see note-meta-data.md).
 export async function findChild(parentId, name, folderOnly = false) {
     let q = `name='${escapeQuery(name)}' and '${parentId}' in parents and trashed=false`;
     if (folderOnly) q += ` and mimeType='${FOLDER_MIME}'`;
-    const url = `${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`;
+    const url = `${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)&spaces=drive`;
     const res = await driveFetch(url, { headers: authHeaders() });
     const data = await res.json();
     return data.files && data.files.length ? data.files[0] : null;
 }
 
-// List all non-trashed children of parentId. Returns [{id,name}].
+// List all non-trashed children of parentId. Returns [{id,name,mimeType,appProperties}].
 export async function listChildren(parentId) {
     const out = [];
     let pageToken = null;
     do {
         const q = `'${parentId}' in parents and trashed=false`;
-        let url = `${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType)&pageSize=1000&spaces=drive`;
+        let url = `${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,appProperties)&pageSize=1000&spaces=drive`;
         if (pageToken) url += `&pageToken=${pageToken}`;
         const res = await driveFetch(url, { headers: authHeaders() });
         const data = await res.json();
@@ -83,10 +84,9 @@ export async function downloadText(fileId) {
     return res.text();
 }
 
-// Create a new text file with the given content under parentId. Returns {id,name}.
-export async function createTextFile(name, content, parentId) {
+// Build a multipart/related body carrying JSON metadata + the text content.
+function multipartBody(metadata, content) {
     const boundary = "enotes_boundary_" + Math.random().toString(36).slice(2);
-    const metadata = { name, parents: [parentId], mimeType: "text/plain" };
     const body =
         `--${boundary}\r\n` +
         `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
@@ -95,6 +95,16 @@ export async function createTextFile(name, content, parentId) {
         `Content-Type: text/plain\r\n\r\n` +
         `${content}\r\n` +
         `--${boundary}--`;
+    return { boundary, body };
+}
+
+// Create a new text file with the given content under parentId. Returns {id,name}.
+// appProperties (optional) is the file's metadata (see note-meta-data.md), stored
+// clear-text as Drive custom file properties.
+export async function createTextFile(name, content, parentId, appProperties = null) {
+    const metadata = { name, parents: [parentId], mimeType: "text/plain" };
+    if (appProperties) metadata.appProperties = appProperties;
+    const { boundary, body } = multipartBody(metadata, content);
     const res = await driveFetch(`${UPLOAD}/files?uploadType=multipart&fields=id,name`, {
         method: "POST",
         headers: authHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
@@ -103,24 +113,38 @@ export async function createTextFile(name, content, parentId) {
     return res.json();
 }
 
-// Replace the content of an existing file by id.
-export async function updateTextFile(fileId, content) {
-    const res = await driveFetch(`${UPLOAD}/files/${fileId}?uploadType=media&fields=id,name`, {
+// Replace the content of an existing file by id. When appProperties is given the
+// metadata is updated in the same request (a multipart update); Drive merges the
+// supplied appProperties keys, leaving other existing keys untouched.
+export async function updateTextFile(fileId, content, appProperties = null) {
+    if (!appProperties) {
+        const res = await driveFetch(`${UPLOAD}/files/${fileId}?uploadType=media&fields=id,name`, {
+            method: "PATCH",
+            headers: authHeaders({ "Content-Type": "text/plain" }),
+            body: content,
+        });
+        return res.json();
+    }
+    const { boundary, body } = multipartBody({ appProperties }, content);
+    const res = await driveFetch(`${UPLOAD}/files/${fileId}?uploadType=multipart&fields=id,name`, {
         method: "PATCH",
-        headers: authHeaders({ "Content-Type": "text/plain" }),
-        body: content,
+        headers: authHeaders({ "Content-Type": `multipart/related; boundary=${boundary}` }),
+        body,
     });
     return res.json();
 }
 
 // Create the file if absent, otherwise overwrite it. Returns {id,name}.
-export async function upsertTextFile(name, content, parentId) {
+// metaProps.create is the full metadata written on first creation;
+// metaProps.update is the (partial) metadata merged when overwriting (see
+// note-meta-data.md) - it should omit DateTimeCreated so that key is preserved.
+export async function upsertTextFile(name, content, parentId, metaProps = {}) {
     const existing = await findChild(parentId, name);
     if (existing) {
-        await updateTextFile(existing.id, content);
+        await updateTextFile(existing.id, content, metaProps.update || null);
         return existing;
     }
-    return createTextFile(name, content, parentId);
+    return createTextFile(name, content, parentId, metaProps.create || null);
 }
 
 export async function renameFile(fileId, newName) {

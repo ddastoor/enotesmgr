@@ -3,6 +3,7 @@
 
 import { state, NO_RECOVERY_MARKER } from "./state.js";
 import { listChildren, createTextFile, deleteFile, findChild } from "./drive.js";
+import { createAppMeta } from "./lib/meta.js";
 import { encryptData, sha256Hex } from "./crypto/crypto.js";
 
 // All real recovery files (excludes the no-recovery marker). Returns [{id,name}].
@@ -42,7 +43,7 @@ export async function generateRecoveryCodes() {
 
     for (const { code, hash } of codes) {
         const encrypted = encryptData(configText, code);
-        await createTextFile(hash, encrypted, state.folders.recovery);
+        await createTextFile(hash, encrypted, state.folders.recovery, createAppMeta("recovery"));
     }
 
     // Remove the "no recovery" marker now that codes exist.

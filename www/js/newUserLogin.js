@@ -10,6 +10,7 @@ import {
 } from "./state.js";
 import { navigate } from "./app.js";
 import { upsertTextFile } from "./drive.js";
+import { appMetaProps } from "./lib/meta.js";
 import { encryptData } from "./crypto/crypto.js";
 import { withStatus, showAlert } from "./lib/dialogs.js";
 import { generateRecoveryCodes } from "./recovery.js";
@@ -23,8 +24,8 @@ export async function runNewUserLogin(masterPassword, generateRecovery) {
         const configFile = encryptData(JSON.stringify(state.configJson), masterPassword);
         const settingsFile = encryptData(JSON.stringify(state.settingsJson), state.configJson.file_password);
 
-        await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config);
-        await upsertTextFile(SETTINGS_FILE_NAME, settingsFile, state.folders.config);
+        await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config, appMetaProps("config"));
+        await upsertTextFile(SETTINGS_FILE_NAME, settingsFile, state.folders.config, appMetaProps("settings"));
     });
 
     if (generateRecovery) {

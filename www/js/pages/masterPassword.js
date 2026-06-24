@@ -5,6 +5,7 @@ import {
     SETTINGS_FILE_NAME,
 } from "../state.js";
 import { findChild, downloadText, upsertTextFile, deleteFile } from "../drive.js";
+import { appMetaProps } from "../lib/meta.js";
 import { decryptData, encryptData } from "../crypto/crypto.js";
 import { withStatus, showAlert } from "../lib/dialogs.js";
 import { listRecoveryFiles, findRecoveryFile } from "../recovery.js";
@@ -165,7 +166,7 @@ async function handleRecoveryCode(code, err) {
         await withStatus("Resetting master password...", async () => {
             state.configJson = recoveryJson;
             const configFile = encryptData(JSON.stringify(state.configJson), newMaster);
-            await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config);
+            await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config, appMetaProps("config"));
 
             // Decrypt settings with the file password to reflect them.
             const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);

@@ -1,6 +1,7 @@
 import { navigate } from "../app.js";
 import { state, filePassword, SETTINGS_FILE_NAME, DEFAULT_SETTINGS } from "../state.js";
 import { findChild, downloadText, upsertTextFile } from "../drive.js";
+import { appMetaProps } from "../lib/meta.js";
 import { encryptData, decryptData } from "../crypto/crypto.js";
 import { withStatus, showAlert } from "../lib/dialogs.js";
 
@@ -81,7 +82,7 @@ async function onSave(timeoutInput, themeSelect, err) {
         state.settingsJson = { ...state.settingsJson, session_timeout_seconds: value, app_theme: theme };
         await withStatus("Saving...", async () => {
             const cipher = encryptData(JSON.stringify(state.settingsJson), filePassword());
-            await upsertTextFile(SETTINGS_FILE_NAME, cipher, state.folders.config);
+            await upsertTextFile(SETTINGS_FILE_NAME, cipher, state.folders.config, appMetaProps("settings"));
         });
         // navigate() re-applies the theme from settings json, refreshing the app.
         navigate("main");
