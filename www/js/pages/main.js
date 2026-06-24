@@ -12,6 +12,7 @@ import {
 import { encryptData, decryptData } from "../crypto/crypto.js";
 import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo } from "../lib/dialogs.js";
 import { nowStamp } from "../lib/meta.js";
+import { showNoteSearch } from "../lib/searchDialog.js";
 import { openMenu } from "./menu.js";
 
 // --- page-local state --------------------------------------------------------
@@ -136,6 +137,7 @@ export function render(container) {
 
             <section class="toolbar glass">
                 <select id="file-select" class="file-select" title="Select a note"></select>
+                <button id="tb-search" class="btn btn-tonal tb-search" title="Search notes" aria-label="Search notes"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
                 <button id="tb-refresh" class="btn btn-tonal" title="Refresh the current note">Refresh</button>
                 <button id="tb-new" class="btn btn-tonal" title="Create a new note">New</button>
                 <button id="tb-upload" class="btn btn-tonal" title="Upload an image or audio file">Upload</button>
@@ -184,6 +186,7 @@ export function render(container) {
     container.querySelector("#tb-delete").addEventListener("click", onDelete);
 
     container.querySelector("#file-select").addEventListener("change", onSelectChange);
+    container.querySelector("#tb-search").addEventListener("click", onSearch);
 
     // Editor format buttons
     container.querySelectorAll(".editor-toolbar [data-cmd]").forEach((btn) => {
@@ -279,6 +282,16 @@ async function onSelectChange(e) {
     }
     const entry = entries.find((x) => x.name === name);
     if (entry) await loadNote(entry);
+}
+
+// Open the note-search dialog; if the user picks a note, select it in the
+// dropdown and run the normal file-selection flow.
+async function onSearch() {
+    const chosen = await showNoteSearch(entries.map((e) => e.name)); // entries are pre-sorted
+    if (!chosen) return;
+    const sel = document.getElementById("file-select");
+    sel.value = chosen;
+    sel.dispatchEvent(new Event("change"));
 }
 
 // --- load / save -------------------------------------------------------------

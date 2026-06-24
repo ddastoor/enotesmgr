@@ -81,6 +81,17 @@ Main page {
                     On file selection { trigger load the note functionality }
                 }
 
+                Search button {
+                    Position: right next to the file selector dropdown. On both PC and mobile.
+                    label/icon: a magnifying glass icon (rendered as an inline SVG, not a unicode/emoji character, consistent with the logout icon rule above).
+                    tooltip: "Search notes"
+                    on click {
+                        Redirect to UI @ ./note-search-popup.md (shown as a popup over this page).
+                        When that popup returns a chosen note name, set the file selector dropdown's selected entry to that name and trigger the usual file selection operation (i.e. the same as if the user had picked it directly from the dropdown - see 'load the note' functionality).
+                        If the popup is cancelled, do nothing.
+                    }
+                }
+
                 Refresh button {
                     label: "Refresh"
                     tooltip: "Refresh the current note"
