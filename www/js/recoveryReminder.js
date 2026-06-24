@@ -5,7 +5,7 @@
 
 import { navigate } from "./app.js";
 import { buildModal } from "./lib/dialogs.js";
-import { listRecoveryFiles, hasDontAskMarker, createDontAskMarker } from "./recovery.js";
+import { listRecoveryFiles, hasDontAskMarker, createDontAskMarker, deleteDontAskMarker } from "./recovery.js";
 
 // Check the recovery file count and, if one or zero are left (and the user hasn't
 // chosen "don't ask again"), show the reminder popup over the main page. Any
@@ -54,4 +54,29 @@ async function showRecoveryReminderPopup(count) {
         }
     }
     // "later" or Escape: close the popup and stay on the main page.
+}
+
+// Menu popup that re-enables the reminder by deleting the don't-ask marker.
+// See instructions/UI/menu/menu-items/start-recovery-code-reminder.md.
+export async function showRestartReminderPopup() {
+    const body = document.createElement("div");
+    body.className = "modal-text";
+    body.textContent =
+        "I'll start reminding you again when you have 1 or no more recovery codes left";
+
+    const choice = await buildModal({
+        title: "Start recovery code generation reminder again",
+        body,
+        buttons: [
+            { label: "Ok", value: "ok", primary: true, variant: "btn-filled" },
+        ],
+    });
+
+    if (choice === "ok") {
+        try {
+            await deleteDontAskMarker();
+        } catch (e) {
+            console.error("Failed to delete don't-ask marker", e);
+        }
+    }
 }

@@ -88,3 +88,9 @@ export async function createDontAskMarker() {
     if (await hasDontAskMarker()) return;
     await createTextFile(ONE_RECOVERY_LEFT_MARKER, "", state.folders.recovery);
 }
+
+// Delete the "don't ask again" marker if present (re-enables the reminder).
+export async function deleteDontAskMarker() {
+    const marker = await findChild(state.folders.recovery, ONE_RECOVERY_LEFT_MARKER);
+    if (marker) await deleteFile(marker.id);
+}
