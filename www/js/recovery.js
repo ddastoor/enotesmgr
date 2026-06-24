@@ -1,15 +1,15 @@
 // Recovery code generation / wiping. A recovery file is the config json
 // encrypted with a 16-digit code, stored under a filename = sha256(code).
 
-import { state, NO_RECOVERY_MARKER } from "./state.js";
+import { state, ONE_RECOVERY_LEFT_MARKER } from "./state.js";
 import { listChildren, createTextFile, deleteFile, findChild } from "./drive.js";
 import { createAppMeta } from "./lib/meta.js";
 import { encryptData, sha256Hex } from "./crypto/crypto.js";
 
-// All real recovery files (excludes the no-recovery marker). Returns [{id,name}].
+// All real recovery files (excludes the one-recovery-left marker). Returns [{id,name}].
 export async function listRecoveryFiles() {
     const files = await listChildren(state.folders.recovery);
-    return files.filter((f) => f.name !== NO_RECOVERY_MARKER);
+    return files.filter((f) => f.name !== ONE_RECOVERY_LEFT_MARKER);
 }
 
 function randomCode() {
@@ -46,8 +46,8 @@ export async function generateRecoveryCodes() {
         await createTextFile(hash, encrypted, state.folders.recovery, createAppMeta("recovery"));
     }
 
-    // Remove the "no recovery" marker now that codes exist.
-    const marker = existing.find((f) => f.name === NO_RECOVERY_MARKER);
+    // Remove the "only one recovery left" marker now that codes exist.
+    const marker = existing.find((f) => f.name === ONE_RECOVERY_LEFT_MARKER);
     if (marker) await deleteFile(marker.id);
 
     downloadCodes(codes.map((c) => c.code));

@@ -10,7 +10,9 @@ mapping of what i say to what i mean {
     'entries folder' => { 'eNotes Manager' / Entries folder structure in the user's google drive }
     'config folder' => { 'eNotes Manager' / Config folder structure in the user's google drive }
     'recovery folder' => { 'eNotes Manager' / Recovery folder structure in the user's google drive }
-    'recovery file' => { one of the potentially many encrypted files in the recovery folder. Its name is the sha256 hash of the recovery code it corresponds to. }
+    
+    'only-one-recovery-file-left-marker-file' => { an empty dummy marker file (not encrypted of course) in the recovery folder to indicate that the user has only one recovery file left. }
+    'recovery file' => { one of the potentially many encrypted files in the recovery folder (not counting 'only-one-recovery-file-left-marker-file'). Its name is the sha256 hash of the recovery code it corresponds to. }
     'recovery json' => { the decrypted 'recovery file' json. }
     
     'config file' => { 'eNotes Manager' / Config / config.json file in the user's google drive. This is the encrypted json file. }
@@ -19,7 +21,6 @@ mapping of what i say to what i mean {
     'settings file' => { 'eNotes Manager' / Config / settings.json file in the user's google drive. This is the encrypted json file }
     settings json => { the in-memory, decrypted "settings file" json that the app stores; it can be initially empty \{\} }
 
-    'no-recovery-files-marker-file' => { a dumy marker file inthe recovery folder to indicate that the user doesn't have any recovery files and doesn't want to be asked again to generate recovery files. }
 
     'master password' => { the password that an existing user enters on the 'master password popup' screen or enters on the 'setup page' screen when they are setting up their account for the first time. 
     }
