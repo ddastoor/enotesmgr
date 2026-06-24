@@ -13,7 +13,7 @@ mapping of what i say to what i mean {
     
     'only-one-recovery-file-left-dont-ask-marker-file' => { an empty dummy marker file (not encrypted of course) in the recovery folder to indicate that the user has only one recovery file left but doesn't want to be asked again to generate more }
     'recovery file' => { one of the potentially many encrypted files in the recovery folder (not counting 'only-one-recovery-file-left-dont-ask-marker-file'). Its name is the sha256 hash of the recovery code it corresponds to. }
-    'recovery file count' => { the number of 'recovery file's in the recovery folder not counting the marker file 'only-one-recovery-file-left-dont-ask-marker-file' }
+    'recovery file count' or 'recovery files count' or 'recovery codes count' => { the number of 'recovery file's in the recovery folder not counting the marker file 'only-one-recovery-file-left-dont-ask-marker-file' }
 
     'recovery json' => { the decrypted 'recovery file' json. }
     
