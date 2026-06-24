@@ -8,6 +8,8 @@ import { withStatus, showAlert } from "../lib/dialogs.js";
 const MIN_TIMEOUT = 60;
 const MAX_TIMEOUT = 3600;
 
+let escHandler = null;
+
 export function render(container) {
     container.innerHTML = `
         <div class="page settings-page">
@@ -49,6 +51,17 @@ export function render(container) {
 
     container.querySelector("#set-cancel").addEventListener("click", () => navigate("main"));
     container.querySelector("#set-save").addEventListener("click", () => onSave(timeoutInput, themeSelect, err));
+
+    // Escape dismisses the settings page, same as pressing Cancel.
+    escHandler = (e) => { if (e.key === "Escape") navigate("main"); };
+    document.addEventListener("keydown", escHandler);
+}
+
+export function teardown() {
+    if (escHandler) {
+        document.removeEventListener("keydown", escHandler);
+        escHandler = null;
+    }
 }
 
 async function loadSettings(timeoutInput, themeSelect) {

@@ -64,6 +64,8 @@ Settings page {
             On click:
                 Redirect to UI @ ./main-page.md without changing anything
         }
+
+        Pressing the Escape key dismisses the settings page exactly like the Cancel button (redirect to UI @ ./main-page.md without changing anything).
     }
 
     on load {
