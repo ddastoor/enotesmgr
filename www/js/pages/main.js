@@ -554,6 +554,7 @@ async function onRename() {
     const name = await showPrompt("Enter a new name for this note:", {
         title: "Rename note",
         initial: current.name,
+        selectAll: true,
     });
     if (!name || name === current.name) return;
     if (entries.some((x) => x.name === name)) {

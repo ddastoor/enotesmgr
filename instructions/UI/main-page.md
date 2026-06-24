@@ -106,7 +106,9 @@ Main page {
                     label: "New"
                     tooltip: "Create a new note"
                     on click {
-                        Ask the user to give a filename for the new note. Strip any extension from the filename if the user enters one. For e.g. if the user enters 'mynote.txt', then the actual filename used should be 'mynote'.
+                        Ask the user to give a filename for the new note. When this filename prompt opens, the cursor/focus must be inside the (empty) filename edit box, ready to type.
+
+                        Strip any extension from the filename if the user enters one. For e.g. if the user enters 'mynote.txt', then the actual filename used should be 'mynote'.
                         
                         If the filename already exists in entries folder, show an error message 'Filename already exists' and do not proceed. 
                         
@@ -193,7 +195,8 @@ Main page {
                     tooltip: "Rename the current note"
 
                     on click {
-                        Ask the user to enter a new name for the current note. 
+                        Ask the user to enter a new name for the current note. When this rename prompt opens, the cursor/focus must be inside the edit box, pre-filled with the current name AND with that whole existing name selected/highlighted, so the user can immediately overtype it.
+
                         If (user entered a new unique filename) {
                             Rename the current note's filename to the new filename in the entries folder
                             Update the file selector dropdown with the new filename

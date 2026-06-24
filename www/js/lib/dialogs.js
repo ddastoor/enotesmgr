@@ -122,8 +122,9 @@ export function showConfirm(message, title = "") {
     });
 }
 
-// Returns the entered string, or null if cancelled.
-export function showPrompt(message, { title = "", initial = "", placeholder = "" } = {}) {
+// Returns the entered string, or null if cancelled. When selectAll is true the
+// initial text is selected (highlighted) once focused, so the user can overtype.
+export function showPrompt(message, { title = "", initial = "", placeholder = "", selectAll = false } = {}) {
     const body = document.createElement("div");
     body.className = "modal-text";
     const label = document.createElement("div");
@@ -138,7 +139,10 @@ export function showPrompt(message, { title = "", initial = "", placeholder = ""
     err.className = "inline-error";
     body.append(label, input, err);
 
-    setTimeout(() => input.focus(), 0);
+    setTimeout(() => {
+        input.focus();
+        if (selectAll) input.select();
+    }, 0);
 
     const result = buildModal({
         title,
@@ -147,7 +151,6 @@ export function showPrompt(message, { title = "", initial = "", placeholder = ""
             { label: "Cancel", value: null, variant: "btn-tonal", isCancel: true },
             {
                 label: "OK",
-                primary: true,
                 variant: "btn-filled",
                 onClick: () => {
                     const v = input.value.trim();
