@@ -69,6 +69,14 @@ Main page {
                 color: some nice pastel color that contrasts well with the title.
             }
 
+            Keyboard shortcuts hint {
+                PC only - not shown on mobile.
+                position: directly below the Fullname display.
+                text: "(? for keyboard shortcuts)" (including the surrounding parentheses).
+                font style: bold, small, in a muted/subtle color.
+                Purpose: hints the user that pressing '?' opens the keyboard shortcuts help (see ./keyboard-shortcuts.md).
+            }
+
         }
 
 

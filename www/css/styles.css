@@ -253,6 +253,14 @@ body {
     margin-top: 2px;
 }
 
+/* PC-only hint pointing at the keyboard shortcuts (hidden on mobile). */
+.kbd-hint {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--on-surface-muted);
+    margin-top: 2px;
+}
+
 /* ---- Toolbar -------------------------------------------------------------- */
 .toolbar {
     display: flex;
@@ -564,6 +572,7 @@ body {
 @media (max-width: 768px) {
     .app-header { padding: 14px 14px 4px; }
     .brand-title { font-size: 30px; }
+    .kbd-hint { display: none; } /* PC only */
     .toolbar { margin: 10px 12px; gap: 8px; }
     .toolbar .btn { flex: 1 1 28%; }
     /* Keep the search button on the same row as the dropdown on mobile. */

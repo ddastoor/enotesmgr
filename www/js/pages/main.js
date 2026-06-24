@@ -133,6 +133,7 @@ export function render(container) {
                 </div>
                 <div id="username" class="username"></div>
                 <div id="fullname" class="fullname"></div>
+                <div id="kbd-hint" class="kbd-hint">(? for keyboard shortcuts)</div>
             </header>
 
             <section class="toolbar glass">
