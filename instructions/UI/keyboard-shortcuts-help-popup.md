@@ -15,6 +15,8 @@ Keyboard shortcuts help popup {
             "U"                ->  "Upload an image or audio file"
             "R"                ->  "Rename the current note"
             "D"                ->  "Delete the current note"
+            "S"                ->  "Open Settings"
+            "M"                ->  "Open the More options menu"
             "X  or  Q"         ->  "Log out"
             "?"                ->  "Show this keyboard shortcuts help"
     }

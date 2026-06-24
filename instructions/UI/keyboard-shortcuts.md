@@ -50,6 +50,17 @@ Main page keyboard shortcuts {
             action: like pressing the Delete button.
         }
 
+        'S' {
+            focus condition: not in the rich text area.
+            action: like pressing the settings button.
+        }
+
+        'M' {
+            focus condition: not in the rich text area.
+            action: like pressing the 'More options' button.
+        }
+
+
         'X' or 'Q' {
             focus condition: not in the rich text area.
             action: like pressing the Logout button.
