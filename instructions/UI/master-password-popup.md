@@ -91,7 +91,25 @@ Master password page {
                     }
                     else {
                         Fetch the config file and settings file from google drive
-                        Decrypt the config file using the master password
+
+                        Load + decrypt the config file using the master password, handling the (normally impossible) case of duplicate config.json files {
+                            Look at how many config.json files exist in the config folder.
+
+                            if (there is exactly one config.json) {
+                                Decrypt it using the master password.
+                                if (decryption fails) { it's a decryption failure (see below). }
+                            }
+                            else if (there is more than one config.json) {
+                                Try to decrypt each config.json copy with the master password, and pick the single copy that decrypts successfully.
+                                if (one of them decrypts) {
+                                    Use that decrypted copy as the config json, KEEP that copy, and DELETE all the other config.json copies (so only the genuine one survives).
+                                }
+                                else (none of them decrypt) {
+                                    Treat it as a decryption failure and DELETE NOTHING (it is likely just a wrong master password, so we must not destroy any copy).
+                                }
+                            }
+                        }
+
                         if (decryption fails) {
                             Display an error message "Decryption failed. Please check your master password", and stay on this page.
                         }

@@ -4,7 +4,7 @@ import {
     CONFIG_FILE_NAME,
     SETTINGS_FILE_NAME,
 } from "../state.js";
-import { findChild, downloadText, upsertTextFile, deleteFile } from "../drive.js";
+import { findChild, listChildren, downloadText, upsertTextFile, deleteFile } from "../drive.js";
 import { appMetaProps } from "../lib/meta.js";
 import { decryptData, encryptVerified } from "../crypto/crypto.js";
 import { withStatus, showAlert } from "../lib/dialogs.js";
@@ -95,21 +95,63 @@ async function submit(input, err) {
     }
 }
 
+// Load and decrypt config.json. Normally there is exactly one. But if duplicate
+// config.json files somehow exist in the Config folder (Drive allows same-named
+// files), pick the single copy that actually decrypts with this master password,
+// keep it, and delete the other copies - so only the genuine one survives. The
+// dedup/delete only happens when there is more than one config.json AND one of
+// them decrypts; if none decrypt (likely just a wrong password) nothing is
+// deleted. Returns the parsed config json, or throws DECRYPT_FAILED.
+async function loadConfigJson(masterPassword) {
+    const configFiles = (await listChildren(state.folders.config))
+        .filter((f) => f.name === CONFIG_FILE_NAME);
+
+    if (configFiles.length === 0) throw new Error("NO_CONFIG");
+
+    if (configFiles.length === 1) {
+        const cipher = await downloadText(configFiles[0].id);
+        try {
+            return JSON.parse(decryptData(cipher, masterPassword));
+        } catch (_) {
+            throw new Error("DECRYPT_FAILED");
+        }
+    }
+
+    // More than one config.json: find the one that decrypts with this password.
+    let keeper = null;
+    let configJson = null;
+    for (const f of configFiles) {
+        try {
+            const cipher = await downloadText(f.id);
+            configJson = JSON.parse(decryptData(cipher, masterPassword));
+            keeper = f;
+            break;
+        } catch (_) {
+            /* not this copy - try the next */
+        }
+    }
+    if (!keeper) throw new Error("DECRYPT_FAILED"); // none decrypted: keep all, delete none
+
+    // Keep the genuine copy; delete the duplicate(s).
+    for (const f of configFiles) {
+        if (f.id !== keeper.id) {
+            try {
+                await deleteFile(f.id);
+            } catch (delErr) {
+                console.error("Failed to delete duplicate config.json", delErr);
+            }
+        }
+    }
+    return configJson;
+}
+
 async function handleMasterPassword(masterPassword, err) {
     try {
         await withStatus("Unlocking...", async () => {
-            const configMeta = await findChild(state.folders.config, CONFIG_FILE_NAME);
-            const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
-            const configCipher = await downloadText(configMeta.id);
-
-            let configJson;
-            try {
-                configJson = JSON.parse(decryptData(configCipher, masterPassword));
-            } catch (_) {
-                throw new Error("DECRYPT_FAILED");
-            }
+            const configJson = await loadConfigJson(masterPassword);
             state.configJson = configJson;
 
+            const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
             if (settingsMeta) {
                 const settingsCipher = await downloadText(settingsMeta.id);
                 state.settingsJson = JSON.parse(decryptData(settingsCipher, configJson.file_password));

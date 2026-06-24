@@ -134,17 +134,47 @@ export async function updateTextFile(fileId, content, appProperties = null) {
     return res.json();
 }
 
-// Create the file if absent, otherwise overwrite it. Returns {id,name}.
+// Remembers the Drive file id of each (parentId, name) we've upserted this
+// session. Drive allows two files with the same name in one folder, and its
+// name-query index is only eventually consistent (a just-created file can be
+// briefly invisible to a name lookup). Without this cache, a second upsert of
+// the same logical file (e.g. config.json) could miss the first one and create a
+// DUPLICATE. Caching the id and always updating it guarantees every later write
+// re-writes the exact same file under the same name - never a renamed/duplicate
+// copy. Keyed by parentId (a Drive-global-unique folder id, so keys never
+// collide across users); cleared on logout via clearFileIdCache().
+const upsertIdCache = new Map();
+const upsertKey = (parentId, name) => `${parentId} ${name}`;
+
+export function clearFileIdCache() {
+    upsertIdCache.clear();
+}
+
+// Create the file if absent, otherwise overwrite the SAME existing file (by id).
+// Never creates a renamed/duplicate copy of a file it has already written.
 // metaProps.create is the full metadata written on first creation;
 // metaProps.update is the (partial) metadata merged when overwriting (see
 // note-meta-data.md) - it should omit DateTimeCreated so that key is preserved.
 export async function upsertTextFile(name, content, parentId, metaProps = {}) {
-    const existing = await findChild(parentId, name);
-    if (existing) {
-        await updateTextFile(existing.id, content, metaProps.update || null);
-        return existing;
+    const key = upsertKey(parentId, name);
+
+    // Prefer the id we already know for this file this session; only fall back
+    // to a name lookup when we haven't written it yet.
+    let id = upsertIdCache.get(key);
+    if (!id) {
+        const existing = await findChild(parentId, name);
+        if (existing) id = existing.id;
     }
-    return createTextFile(name, content, parentId, metaProps.create || null);
+
+    if (id) {
+        await updateTextFile(id, content, metaProps.update || null);
+        upsertIdCache.set(key, id);
+        return { id, name };
+    }
+
+    const created = await createTextFile(name, content, parentId, metaProps.create || null);
+    upsertIdCache.set(key, created.id);
+    return created;
 }
 
 export async function renameFile(fileId, newName) {

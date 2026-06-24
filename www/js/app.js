@@ -4,6 +4,7 @@
 
 import { state, resetState, DEFAULT_SETTINGS } from "./state.js";
 import { hideStatus } from "./lib/dialogs.js";
+import { clearFileIdCache } from "./drive.js";
 
 import * as login from "./pages/login.js";
 import * as setup from "./pages/setup.js";
@@ -63,6 +64,7 @@ export function applyTheme() {
 export function logout() {
     stopSessionTimer();
     resetState();
+    clearFileIdCache();
     try {
         localStorage.clear();
         sessionStorage.clear();
