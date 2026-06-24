@@ -45,6 +45,13 @@ export function render(container) {
         if (ruleError) { err.textContent = ruleError; return; }
         if (p1 !== p2) { err.textContent = "The two passwords do not match."; return; }
 
-        await runNewUserLogin(p1, gen.checked);
+        try {
+            await runNewUserLogin(p1, gen.checked);
+        } catch (e) {
+            console.error(e);
+            err.textContent = e && e.message === "ENCRYPT_VERIFY_FAILED"
+                ? "Could not securely create your account (encryption self-check failed). Please try again."
+                : "Something went wrong creating your account. Please try again.";
+        }
     });
 }

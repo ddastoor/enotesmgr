@@ -78,7 +78,7 @@ Master password page {
                                 recovery json = it's decrypted contents
                                 master password = fetch the new master password from the UI @ ./reset-master-password-popup.md
                                 config json = recovery json
-                                Encrypt config json using master password = config file
+                                Encrypt config json using master password = config file. Use the "verified encrypt" operation (see ../crypto.md): do the encryption and its self-check BEFORE writing, so a failed self-check aborts the reset and leaves the existing config.json untouched. On such a failure, show an error like "Could not securely reset your password (encryption self-check failed). Your old config was left untouched - please try again." and do not proceed.
                                 Save config file to google drive
                                 Use "file_password" to decrypt the settings file = settings json
                                 Reflect the settings json values immediately.

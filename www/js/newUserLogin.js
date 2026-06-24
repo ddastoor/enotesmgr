@@ -11,7 +11,7 @@ import {
 import { navigate } from "./app.js";
 import { upsertTextFile } from "./drive.js";
 import { appMetaProps } from "./lib/meta.js";
-import { encryptData } from "./crypto/crypto.js";
+import { encryptData, encryptVerified } from "./crypto/crypto.js";
 import { withStatus, showAlert } from "./lib/dialogs.js";
 import { generateRecoveryCodes } from "./recovery.js";
 import { maybeShowRecoveryReminder } from "./recoveryReminder.js";
@@ -22,7 +22,9 @@ export async function runNewUserLogin(masterPassword, generateRecovery) {
         state.settingsJson = { ...DEFAULT_SETTINGS };
         state.configJson = { file_password: crypto.randomUUID() };
 
-        const configFile = encryptData(JSON.stringify(state.configJson), masterPassword);
+        // Verify the config re-decrypts before we persist it, so we never write
+        // a config.json that the master password can't open.
+        const configFile = encryptVerified(JSON.stringify(state.configJson), masterPassword);
         const settingsFile = encryptData(JSON.stringify(state.settingsJson), state.configJson.file_password);
 
         await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config, appMetaProps("config"));

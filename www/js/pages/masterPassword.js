@@ -6,7 +6,7 @@ import {
 } from "../state.js";
 import { findChild, downloadText, upsertTextFile, deleteFile } from "../drive.js";
 import { appMetaProps } from "../lib/meta.js";
-import { decryptData, encryptData } from "../crypto/crypto.js";
+import { decryptData, encryptVerified } from "../crypto/crypto.js";
 import { withStatus, showAlert } from "../lib/dialogs.js";
 import { listRecoveryFiles, findRecoveryFile } from "../recovery.js";
 import { maybeShowRecoveryReminder } from "../recoveryReminder.js";
@@ -169,7 +169,9 @@ async function handleRecoveryCode(code, err) {
     try {
         await withStatus("Resetting master password...", async () => {
             state.configJson = recoveryJson;
-            const configFile = encryptData(JSON.stringify(state.configJson), newMaster);
+            // Verify the re-encrypted config decrypts with the new master password
+            // before overwriting config.json, so a bad write can't lock the user out.
+            const configFile = encryptVerified(JSON.stringify(state.configJson), newMaster);
             await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config, appMetaProps("config"));
 
             // Decrypt settings with the file password to reflect them.
@@ -183,7 +185,9 @@ async function handleRecoveryCode(code, err) {
         });
     } catch (e) {
         console.error(e);
-        err.textContent = "Something went wrong resetting your password. Please try again.";
+        err.textContent = e && e.message === "ENCRYPT_VERIFY_FAILED"
+            ? "Could not securely reset your password (encryption self-check failed). Your old config was left untouched - please try again."
+            : "Something went wrong resetting your password. Please try again.";
         return;
     }
 

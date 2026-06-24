@@ -130,6 +130,22 @@ export function encryptData(text, password) {
     return base64Out;
 }
 
+// Encrypt `text` with `password`, then immediately decrypt the result and
+// confirm it matches `text` byte-for-byte before returning the ciphertext.
+// Throws ENCRYPT_VERIFY_FAILED if the round-trip does not reproduce the input,
+// so callers can refuse to persist ciphertext that would not decrypt cleanly.
+export function encryptVerified(text, password) {
+    const cipher = encryptData(text, password);
+    let roundTrip;
+    try {
+        roundTrip = decryptData(cipher, password);
+    } catch (_) {
+        throw new Error("ENCRYPT_VERIFY_FAILED");
+    }
+    if (roundTrip !== text) throw new Error("ENCRYPT_VERIFY_FAILED");
+    return cipher;
+}
+
 export function decryptData(base64Text, password) {
     const passwordBytes = utf8Encode(password);
     const passwordPtr = wasm_malloc(passwordBytes.length);

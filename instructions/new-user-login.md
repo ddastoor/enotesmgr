@@ -16,7 +16,7 @@ create new config json with contents {
     \}
 }
 
-encrypt the config json using the master password to produce the encrypted config file.
+encrypt the config json using the master password to produce the encrypted config file. Use the "verified encrypt" operation (see ./crypto.md) for this - if its self-check fails, do NOT save anything; show the user an error and abort account creation.
 encrypt the settings json using the file password to produce the encrypted settings file.
 save encrypted config file and encrypted settings file to google drive 
 
