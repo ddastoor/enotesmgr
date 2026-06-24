@@ -2,9 +2,13 @@
 
 1 or 0 recovery codes left popup { 
 
-    popup title - "1 or no recovery codes left"
+    popup title {
+        if (recovery file count == 1) { "Only 1 recovery code left" }
+        else if (recovery file count == 0) { "No recovery codes left" }
+    }
     popup description { 
-        "You have 1 or no recovery codes left. Generate more recovery codes to stay safe." 
+        if (recovery file count == 1) { "You have only 1 recovery code left. Generate more recovery codes to stay safe." }
+        else if (recovery file count == 0) { "You have no recovery codes left. Generate more recovery codes to stay safe." }
     }
     
     'Generate more' button { 

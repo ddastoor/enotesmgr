@@ -11,25 +11,31 @@ import { listRecoveryFiles, hasDontAskMarker, createDontAskMarker } from "./reco
 // chosen "don't ask again"), show the reminder popup over the main page. Any
 // failure is logged and swallowed so it never blocks reaching the main page.
 export async function maybeShowRecoveryReminder() {
+    let count;
     try {
         const files = await listRecoveryFiles();
-        if (files.length > 1) return;
+        count = files.length;
+        if (count > 1) return;
         if (await hasDontAskMarker()) return;
     } catch (e) {
         console.error("Recovery reminder check failed", e);
         return;
     }
-    await showRecoveryReminderPopup();
+    await showRecoveryReminderPopup(count);
 }
 
-async function showRecoveryReminderPopup() {
+async function showRecoveryReminderPopup(count) {
+    const title = count === 1 ? "Only 1 recovery code left" : "No recovery codes left";
+    const message = count === 1
+        ? "You have only 1 recovery code left. Generate more recovery codes to stay safe."
+        : "You have no recovery codes left. Generate more recovery codes to stay safe.";
+
     const body = document.createElement("div");
     body.className = "modal-text";
-    body.textContent =
-        "You have 1 or no recovery codes left. Generate more recovery codes to stay safe.";
+    body.textContent = message;
 
     const choice = await buildModal({
-        title: "1 or no recovery codes left",
+        title,
         body,
         buttons: [
             { label: "Generate more", value: "generate", primary: true, variant: "btn-filled" },
