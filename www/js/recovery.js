@@ -1,5 +1,5 @@
 // Recovery code generation / wiping. A recovery file is the config json
-// encrypted with an 8-digit code, stored under a filename = sha256(code).
+// encrypted with a 16-digit code, stored under a filename = sha256(code).
 
 import { state, NO_RECOVERY_MARKER } from "./state.js";
 import { listChildren, createTextFile, deleteFile, findChild } from "./drive.js";
@@ -13,11 +13,11 @@ export async function listRecoveryFiles() {
 }
 
 function randomCode() {
-    // 8-digit numeric code, leading zeros allowed.
+    // 16-digit numeric code, leading zeros allowed.
     let code = "";
-    const digits = new Uint32Array(8);
+    const digits = new Uint32Array(16);
     window.crypto.getRandomValues(digits);
-    for (let i = 0; i < 8; i++) code += (digits[i] % 10).toString();
+    for (let i = 0; i < 16; i++) code += (digits[i] % 10).toString();
     return code;
 }
 

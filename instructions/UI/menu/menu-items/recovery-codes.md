@@ -5,20 +5,20 @@
 
              page description {
 
-                "Generate 10 new random 8-digit numeric codes. Use these numeric codes if you happen to forget your master password. Once a code is used, it is exhausted. Save these code very safely."
+                "Generate 10 new random 16-digit numeric codes. Use these numeric codes if you happen to forget your master password. Once a code is used, it is exhausted. Save these code very safely."
 
              }
 
 
              'Generate' button {
                 label: "Generate"
-                one description: "Generate 10 new random 8-digit numeric codes"
+                one description: "Generate 10 new random 16-digit numeric codes"
 
                 on click {
 
                     `exist-rec-lst` = Get a list of all existing recovery filenames in the recovery folder = "existing recovery filenames list"
 
-                    Generate 10 new, unique random 8-digit numeric codes such that their sha256s are not already present in `exist-rec-lst`
+                    Generate 10 new, unique random 16-digit numeric codes such that their sha256s are not already present in `exist-rec-lst`
 
                     These numeric code are meant to be master password replacements in case the user forgets their master password. Each code can be used only once.
 

@@ -84,7 +84,9 @@ async function submit(input, err) {
     const value = input.value;
     if (!value) return; // empty: do nothing
 
-    const isRecoveryCode = /^\d+$/.test(value);
+    // Exactly 16 digits (numbers only) means a recovery code. Anything with a
+    // non-digit character — or any other length — is treated as a master password.
+    const isRecoveryCode = /^\d{16}$/.test(value);
     if (isRecoveryCode) {
         await handleRecoveryCode(value, err);
     } else {

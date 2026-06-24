@@ -13,13 +13,13 @@ export function render(container) {
 
             <section class="recovery-body">
                 <p class="muted">
-                    Generate 10 new random 8-digit numeric codes. Use these numeric codes if you
+                    Generate 10 new random 16-digit numeric codes. Use these numeric codes if you
                     happen to forget your master password. Once a code is used, it is exhausted.
                     Save these codes very safely.
                 </p>
 
                 <div class="button-row recovery-actions">
-                    <button id="rc-generate" class="btn btn-filled" title="Generate 10 new random 8-digit numeric codes">Generate</button>
+                    <button id="rc-generate" class="btn btn-filled" title="Generate 10 new random 16-digit numeric codes">Generate</button>
                     <button id="rc-wipe" class="btn btn-danger" title="Delete all recovery codes">Wipe</button>
                     <button id="rc-done" class="btn btn-tonal">Done</button>
                 </div>

@@ -55,7 +55,7 @@ Master password page {
             submit action {
                 if (the master password edit box is not empty) {
                     
-                    If the entry in the master password edit box is made up of only digits, treat it as a recovery code. Else treat it as the master password.
+                    If the entry in the master password edit box is made up of exactly 16 digits (numbers only, nothing else), treat it as a recovery code. Else (it contains any non-digit character, or is any other length) treat it as the master password.
 
 
                     if (it's a recovery code) {
