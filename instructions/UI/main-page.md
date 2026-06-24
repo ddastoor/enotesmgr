@@ -74,7 +74,7 @@ Main page {
                 position: directly below the Fullname display.
                 text: "(? for keyboard shortcuts)" (including the surrounding parentheses).
                 font style: bold and small.
-                color: a nice pastel color that contrasts well with the Fullname display's color (the full name is a pastel teal, so use a contrasting pastel such as a pastel rose/pink). Must stay readable in both light and dark themes.
+                color: blue. It must contrast well with the Fullname display's color (the full name is a pastel teal). Use a blue that stays readable in both light and dark themes (a deeper blue in light theme, a lighter blue in dark theme).
                 Purpose: hints the user that pressing '?' opens the keyboard shortcuts help (see ./keyboard-shortcuts.md).
             }
 

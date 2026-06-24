@@ -22,8 +22,8 @@
     /* Pastel teal for the user's full name — contrasts with the purple title. */
     --name-accent: #2f9e91;
 
-    /* Pastel rose for the keyboard-shortcuts hint — contrasts the teal name. */
-    --hint-accent: #d16aa6;
+    /* Blue for the keyboard-shortcuts hint — contrasts the teal name. */
+    --hint-accent: #3b6fd1;
 
     --radius-lg: 26px;
     --radius-md: 18px;
@@ -45,7 +45,7 @@
     --accent-soft: #352c52;
     --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     --name-accent: #7fe3d4;
-    --hint-accent: #f6b6d6;
+    --hint-accent: #8db4f6;
 }
 
 :root[data-theme="dark"] body {
