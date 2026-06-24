@@ -458,6 +458,8 @@ async function onSave() {
         console.error(e);
         await showAlert("Could not save this note.", "Error");
     }
+    // After a save, move focus out of the rich text editor (back onto the page).
+    document.getElementById("editor").blur();
 }
 
 // If a note created via "new" (a rich text note) has unsaved changes, offer to

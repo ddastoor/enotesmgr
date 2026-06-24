@@ -197,6 +197,8 @@ Main page {
                     }
                     on click {
                         save the current note functionality
+
+                        After the save operation, move the cursor/focus OUT of the rich text editing area (back onto the main page, i.e. not inside the editor). This applies whether the save was triggered by clicking Save or via the Ctrl+S keyboard shortcut.
                     }
                 }
 
