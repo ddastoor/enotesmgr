@@ -13,6 +13,8 @@ mapping of what i say to what i mean {
     
     'only-one-recovery-file-left-marker-file' => { an empty dummy marker file (not encrypted of course) in the recovery folder to indicate that the user has only one recovery file left. }
     'recovery file' => { one of the potentially many encrypted files in the recovery folder (not counting 'only-one-recovery-file-left-marker-file'). Its name is the sha256 hash of the recovery code it corresponds to. }
+    'recovery file count' => { the number of 'recovery file's in the recovery folder not counting the marker file 'only-one-recovery-file-left-marker-file' }
+
     'recovery json' => { the decrypted 'recovery file' json. }
     
     'config file' => { 'eNotes Manager' / Config / config.json file in the user's google drive. This is the encrypted json file. }

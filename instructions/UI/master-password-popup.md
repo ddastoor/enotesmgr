@@ -60,7 +60,7 @@ Master password page {
 
                     if (it's a recovery code) {
                         
-                        if (there are no recovery files left \(not counting file 'only-one-recovery-file-left-marker-file'\) ) {
+                        if (recovery file count == 0) {
 
                             Display an error message "Sorry, you're out of luck - you don't have any recovery codes left. Try your best to remember your master password!!". Once the user dismisses this message, end the session and redirect to UI @ ./login-page.md
 
