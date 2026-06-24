@@ -143,6 +143,8 @@ Main page {
 
                             The 'un-encrypted note entry content' is the actual note contents only (no metadata section, no separating newline).
                             Encrypt this with the file password and save it to the entries folder. Write the note metadata to the entry's Google Drive custom file properties (appProperties) — see ./note-meta-data.md. Then re-fetch and display according to 'Note Display Methods based on FileType' (see ./note-meta-data.md)
+
+                            A new note is always a richtext note, so after it is saved and displayed, put the cursor/focus into the rich text editing area so the user can start typing right away (same focus behaviour as loading a richtext note - see 'load the note' functionality).
                             
 
                         }

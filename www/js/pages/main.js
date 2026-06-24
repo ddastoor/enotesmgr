@@ -505,6 +505,9 @@ async function onNew() {
         await snapshotContentHash();
         dirty = false;
         updateButtons();
+        // A new note is always richtext: put the caret in the editor so the user
+        // can start typing right away.
+        document.getElementById("editor").focus();
     } catch (e) {
         console.error(e);
         await showAlert("Could not create the note.", "Error");
