@@ -3,6 +3,8 @@
 
 Main page {
 
+    Keyboard shortcuts (PC only) for this page are defined in ./keyboard-shortcuts.md.
+
     on reaching this page right after a login (whether via master password or as a new user) {
         Check the 'recovery file count'.
         if (recovery file count <= 1 \(i.e. 1 or 0\) AND the 'one-or-no-recovery-files-left-dont-ask-marker-file' does NOT exist) {

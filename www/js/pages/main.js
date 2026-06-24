@@ -10,7 +10,7 @@ import {
     findChild,
 } from "../drive.js";
 import { encryptData, decryptData } from "../crypto/crypto.js";
-import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo } from "../lib/dialogs.js";
+import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal } from "../lib/dialogs.js";
 import { nowStamp } from "../lib/meta.js";
 import { showNoteSearch } from "../lib/searchDialog.js";
 import { openMenu } from "./menu.js";
@@ -233,7 +233,97 @@ export function render(container) {
     container.querySelector("#hidden-ins-image").addEventListener("change", onInsertImage);
     container.querySelector("#hidden-ins-audio").addEventListener("change", onInsertAudio);
 
+    // Keyboard shortcuts are PC-only (see instructions/UI/keyboard-shortcuts.md).
+    if (!isMobile()) {
+        keydownHandler = onGlobalKeydown;
+        document.addEventListener("keydown", keydownHandler);
+    }
+
     refreshEntries();
+}
+
+export function teardown() {
+    if (keydownHandler) {
+        document.removeEventListener("keydown", keydownHandler);
+        keydownHandler = null;
+    }
+}
+
+// --- keyboard shortcuts (PC only) --------------------------------------------
+let keydownHandler = null;
+
+// True while a modal/drawer popup is open over the main page; shortcuts are
+// suppressed in that case. The transient status spinner (.status-overlay) is
+// intentionally not counted as a popup.
+function popupOpen() {
+    return !!document.querySelector(".modal-backdrop, .drawer-backdrop");
+}
+
+function clickToolbar(id) {
+    const btn = document.getElementById(id);
+    if (btn) btn.click(); // disabled buttons ignore clicks, so state is respected
+}
+
+function onGlobalKeydown(e) {
+    if (isMobile()) return;
+    if (popupOpen()) return; // no shortcuts while another popup is over the page
+
+    const editor = document.getElementById("editor");
+    const ae = document.activeElement;
+    const inEditor = !!(editor && ae && (ae === editor || editor.contains(ae)));
+
+    const ctrl = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+
+    // Ctrl+S: Save. Works anywhere, including inside the editor.
+    if (ctrl && !e.altKey && key === "s") {
+        e.preventDefault();
+        clickToolbar("tb-save");
+        return;
+    }
+    // Ctrl+K: open search. Not while typing in the editor.
+    if (ctrl && !e.altKey && key === "k") {
+        if (inEditor) return;
+        e.preventDefault();
+        clickToolbar("tb-search");
+        return;
+    }
+
+    // Remaining shortcuts: single keys, no Ctrl/Alt/Meta, and not in the editor.
+    if (ctrl || e.altKey) return;
+    if (inEditor) return;
+
+    switch (e.key) {
+        case "/": e.preventDefault(); clickToolbar("tb-search"); break;
+        case "?": e.preventDefault(); showShortcutsHelp(); break;
+        case "n": case "N": e.preventDefault(); clickToolbar("tb-new"); break;
+        case "u": case "U": e.preventDefault(); clickToolbar("tb-upload"); break;
+        case "r": case "R": e.preventDefault(); clickToolbar("tb-rename"); break;
+        case "d": case "D": e.preventDefault(); clickToolbar("tb-delete"); break;
+    }
+}
+
+// '?' help popup listing the main-page keyboard shortcuts.
+function showShortcutsHelp() {
+    const rows = [
+        ["/ &nbsp;or&nbsp; Ctrl + K", "Search notes"],
+        ["Ctrl + S", "Save the current note"],
+        ["N", "New note"],
+        ["U", "Upload an image or audio file"],
+        ["R", "Rename the current note"],
+        ["D", "Delete the current note"],
+        ["?", "Show this keyboard shortcuts help"],
+    ];
+    const body = document.createElement("div");
+    body.className = "modal-text";
+    body.innerHTML = `<dl class="shortcuts-list">${rows
+        .map(([k, d]) => `<div><dt>${k}</dt><dd>${d}</dd></div>`)
+        .join("")}</dl>`;
+    return buildModal({
+        title: "Keyboard shortcuts",
+        body,
+        buttons: [{ label: "Close", value: true, primary: true, variant: "btn-filled", isCancel: true }],
+    });
 }
 
 // --- entries / selector ------------------------------------------------------
