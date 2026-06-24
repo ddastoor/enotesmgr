@@ -300,6 +300,7 @@ function onGlobalKeydown(e) {
         case "u": case "U": e.preventDefault(); clickToolbar("tb-upload"); break;
         case "r": case "R": e.preventDefault(); clickToolbar("tb-rename"); break;
         case "d": case "D": e.preventDefault(); clickToolbar("tb-delete"); break;
+        case "x": case "X": case "q": case "Q": e.preventDefault(); clickToolbar("btn-logout"); break;
     }
 }
 
@@ -312,6 +313,7 @@ function showShortcutsHelp() {
         ["U", "Upload an image or audio file"],
         ["R", "Rename the current note"],
         ["D", "Delete the current note"],
+        ["X &nbsp;or&nbsp; Q", "Log out"],
         ["?", "Show this keyboard shortcuts help"],
     ];
     const body = document.createElement("div");

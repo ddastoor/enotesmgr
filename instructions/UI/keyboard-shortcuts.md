@@ -50,6 +50,11 @@ Main page keyboard shortcuts {
             action: like pressing the Delete button.
         }
 
+        'X' or 'Q' {
+            focus condition: not in the rich text area.
+            action: like pressing the Logout button.
+        }
+
         '?' {
             focus condition: not in the rich text area.
             action: show the keyboard shortcuts help popup - see ./keyboard-shortcuts-help-popup.md.
