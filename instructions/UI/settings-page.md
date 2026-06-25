@@ -13,7 +13,7 @@ Settings page {
                 'Session Timeout Seconds' {
                         The user's google session time in seconds
                         type: edit box that accepts only numbers 
-                        default value: 60
+                        default value: 300
 
                         validation {
                             minimum value is 60

@@ -80,7 +80,7 @@ const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "scro
 
 function timeoutSeconds() {
     const s = state.settingsJson && state.settingsJson.session_timeout_seconds;
-    return Number.isFinite(s) ? s : 60;
+    return Number.isFinite(s) ? s : DEFAULT_SETTINGS.session_timeout_seconds;
 }
 
 function resetTimer() {

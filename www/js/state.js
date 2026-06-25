@@ -39,7 +39,7 @@ export function resetState() {
     state.generateRecoveryOnSetup = false;
 }
 
-export const DEFAULT_SETTINGS = { session_timeout_seconds: 60, app_theme: "Light" };
+export const DEFAULT_SETTINGS = { session_timeout_seconds: 300, app_theme: "Light" };
 
 export const CONFIG_FILE_NAME = "config.json";
 export const SETTINGS_FILE_NAME = "settings.json";
