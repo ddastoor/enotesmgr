@@ -165,14 +165,18 @@ Main page {
                             }
                         } 
 
-                        Popup a file dialog for the user to upload the file. If the filename to be uploaded is already present in entries folder, show an error message 'Filename already exists' and do not proceed. 
+                        Popup a file dialog for the user to upload the file.
+
+                        Determine the uploaded file's type by its CONTENT (magic number), NOT by its filename extension or the browser-provided File.type — see 'File type detection (magic number)'. If the detected type is not a currently-supported uploadable type (image or audio), show the error 'Only image or audio files can be uploaded.' and do not proceed.
+
+                        If the filename to be uploaded is already present in entries folder, show an error message 'Filename already exists' and do not proceed. 
                         
                         If (user selected a new unique filename) {
                             Set the note metadata {
                                 "DateTimeCreated" = current date and time in [date]T[time] format
                                 "DateTimeModified" = same as "DateTimeCreated"
                                 "CreationMethod" = "upload"
-                                "FileType" = the filetype of the uploaded file
+                                "FileType" = the file's type as detected by content (magic number) — see 'File type detection (magic number)'
                             }
 
                             
@@ -228,7 +232,30 @@ Main page {
                     }
                 }
 
+                Export button {
+                    PC ONLY — this button is NOT shown/created on mobile at all (import/export is a PC-only feature, gated the same way as the keyboard shortcuts and the PC-only embed selection; see the isMobile gating used elsewhere on this page).
+                    label/icon: a downward arrow (↓ "export / download out").
+                    rendering: a narrow / compact box, noticeably narrower than the labelled text buttons (Refresh/New/Upload/etc.).
+                    tooltip: "Export the current note"
+                    Position: it forms an adjacent pair with the Import button — Export (↓) immediately to the LEFT of Import (↑), the two sitting right next to each other (placed together at the end of the toolbar, after Delete).
+                    disabled if { no real note is loaded (the file selector is showing the dummy "" entry) }
+                    on click { run the 'export the current note' functionality }
+                    No keyboard shortcut is assigned to this button.
+                }
+
+                Import button {
+                    PC ONLY — not shown/created on mobile (same gating as the Export button).
+                    label/icon: an upward arrow (↑ "import / bring in").
+                    rendering: a narrow / compact box, the same narrow size as the Export button.
+                    tooltip: "Import a note"
+                    Position: immediately to the RIGHT of the Export button (the two form one adjacent ↓ ↑ pair).
+                    It is always available on PC and does NOT require a note to be loaded (it creates a new note).
+                    on click { run the 'import a note' functionality }
+                    No keyboard shortcut is assigned to this button.
+                }
+
                 Disable and enable the above buttons appropriately based on the file meta data keys "FileType" and "CreationMethod" for the current note. 
+                The Export button is disabled when the dummy "" entry is selected (no real note loaded), and enabled for any real loaded note (rich text or uploaded media). The Import button is always enabled on PC. Both Export and Import exist on PC only.
                 Additionally, the Save button should be disabled for the dummy file entry and for CreationMethod = "upload", otherwise the Save button should be enabled.                 
 
             }
@@ -279,6 +306,106 @@ Main page {
 
                     See ./note-meta-data.md for logic related to 'On Saving the note, just before encrypting the note file contents'
                 }
+            }
+
+
+            'File type detection (magic number)' {
+                Wherever the app needs to determine the type of a user-provided file — both the Upload button AND the Import functionality — it MUST detect the type from the file's CONTENT (its magic-number / file signature, like the Linux `file` command), NOT from the filename extension and NOT from the browser-provided File.type (which is itself only derived from the extension and is unreliable / spoofable).
+
+                Use a no-build, browser-side JavaScript magic-number library for this (the JS equivalent of libmagic / `file`), able to recognise at least images, audio, video, PDF and MS Office documents by their binary signature. Requirements {
+                    - It must be vendored locally as a pre-bundled ES module, with NO bundler / npm build step, following the same local-vendoring pattern already used for the WASI shim (the wasi-shim-vendor folder). Do NOT load it from a live CDN — the app stays self-contained / offline-capable.
+                    - Detection must read only the leading bytes of the file (so it stays memory-bounded even for large files).
+                }
+
+                Map the detected MIME type to the app's FileType enum (see ./note-meta-data.md). This mime→FileType mapping is the SINGLE place to extend when adding new supported types later (e.g. video / PDF / MS Office): add a viewer for display and a row to this map, with no other redesign.
+
+                The filename extension / File.type may be used ONLY as a fallback hint for formats that have NO binary signature — namely plain text / HTML, which is how a rich text export is recognised (see 'import a note' functionality). Everything with a real binary signature is identified by content.
+            }
+
+
+            'export the current note' functionality {
+                PC ONLY. Exports the currently loaded note to the user's local filesystem in DECRYPTED form (there is no encrypted-export variant). Works for both rich text notes and uploaded media notes.
+
+                Source of the exported bytes — the verbatim guarantee {
+                    The app keeps, for the currently loaded note, an in-memory snapshot of its DECRYPTED stored content — i.e. the exact bytes that are currently encrypted for this note in the Entries folder. This snapshot is:
+                        - set when a note is loaded/opened (= the decrypted file content), and
+                        - refreshed after every successful save (= the exact content string that was just encrypted and written to Drive).
+                    Export writes THIS snapshot byte-for-byte. It MUST NOT re-serialize the live rich text editor (i.e. must not use readEditorContent()) to produce the export, because loading content into the contenteditable editor can normalize the HTML (see the normalization note in 'save the current note' functionality) — so the live editor serialization can differ from the actually-stored bytes. Exporting the stored snapshot guarantees the exported file is byte-for-byte identical to the note's decrypted stored content, no matter how complex the note is (bold/italic/plain text and embedded image/audio data are all just opaque bytes in this snapshot).
+                }
+
+                Unsaved changes {
+                    If the current note is a rich text note with unsaved changes, first run the same "Do you want to save the current note?" prompt used before switching notes:
+                        - if the user saves: the snapshot is refreshed, then export that snapshot;
+                        - if the user declines to save: export the last-saved snapshot as-is;
+                        - if the user cancels: abort the export.
+                    (Uploaded media notes can never have unsaved changes — Save is disabled for them — so this only applies to rich text.)
+                }
+
+                Produce the download (a single file; browser-agnostic; memory-bounded since only the one already-loaded note is in memory) {
+                    Build a Blob from the in-memory decrypted snapshot and trigger a browser download via a temporary object URL + a transient <a download> element (revoke the object URL afterwards).
+
+                    Exported filename + extension — the extension is what carries the note's FileType for later re-import {
+                        if (FileType is "richtext") {
+                            filename = <note name> + ".html"   (rich text notes are named WITHOUT an extension, so append ".html")
+                            Blob MIME type: text/html
+                            Blob content: the snapshot HTML string, encoded as UTF-8
+                        }
+                        else (uploaded media — image / audio, and future video / PDF / MS Office) {
+                            filename = the note's name VERBATIM. Uploaded notes are already named with their original filename including its extension (see the Upload button, which stores the uploaded file under its own name), so do NOT append or alter the extension.
+                            The snapshot is a data URL ("data:<mime>;base64,<...>"); convert it to a Blob of that same MIME type and download it — its bytes are exactly the originally-uploaded file's bytes.
+                        }
+                    }
+                }
+            }
+
+
+            'import a note' functionality {
+                PC ONLY. Imports a previously-exported (decrypted) file back into the app, recreating the note as if the user had originally performed the matching action (created a rich text note, or uploaded a media file) — see ./note-meta-data.md for the FileType/CreationMethod model this relies on.
+
+                Pick a file from the user's local filesystem via a hidden file input opened by the Import button. (A rich text export is a .html file; a media export is an image/audio file — and, in future, video / PDF / MS Office.)
+
+                Detect the file's FileType by CONTENT (magic number), NOT by extension — see 'File type detection (magic number)'. Decide the note's FileType from the detection:
+                    - detected image/*  => FileType "image"
+                    - detected audio/*  => FileType "audio"
+                    - NO binary magic signature AND the file is text / HTML => FileType "richtext" (this is the residual case — text/HTML has no magic signature; the .html extension / File.type is the fallback hint here)
+                    - (future) detected video / PDF / MS Office => their FileTypes once those are supported
+                    - anything else (an unsupported binary type with no supported mapping) => show an error ("Unsupported file type") and abort.
+
+                Derive CreationMethod from FileType (these are the only valid combinations — see ./note-meta-data.md): "richtext" => "new"; "image" / "audio" (/ future uploads) => "upload". CreationMethod is NEVER read from the file — it is always derived.
+
+                Derive the note name {
+                    if (FileType is "richtext") name = the filename with ONLY its final ".html" extension removed — strip exactly the one trailing extension, NEVER greedily (e.g. "report.v2.html" => "report.v2", not "report").
+                    else (media) name = the FULL filename VERBATIM, including its extension (this matches how the Upload button names uploaded notes, e.g. an imported "photo.png" becomes a note named "photo.png").
+                }
+
+                If a note is currently loaded and is an unsaved new rich text note, first run the same "Do you want to save the current note?" flow that New / Upload use before proceeding.
+
+                Duplicate-name guard: if a note with the derived name already exists in the Entries folder, show 'Filename already exists' and do NOT proceed (no overwrite, no auto-rename) — identical to the New / Upload / Rename behaviour.
+
+                Build the note content, stored VERBATIM (byte-for-byte; no editor round-trip) {
+                    if (FileType is "richtext") content = the file's exact text (UTF-8 string). This reproduces the rich text note exactly; do NOT load it into the editor and re-serialize it (that would normalize the HTML and break byte-exactness).
+                    else (media) content = the file read as a data URL (exactly as the Upload button does), i.e. the original file bytes.
+                }
+
+                Set the note metadata {
+                    "DateTimeCreated" = current date and time in [date]T[time] format
+                    "DateTimeModified" = same as "DateTimeCreated"
+                    "CreationMethod" = derived (above)
+                    "FileType" = detected (above)
+                }
+                (Timestamps are intentionally regenerated — an import behaves as if the user performed the original New / Upload action right now.)
+
+                Encrypt the content with the file password and create a NEW file in the Entries folder, using the SAME create path as New / Upload: write the metadata to the new Drive file's appProperties (see ./note-meta-data.md and ./data-storage.md), then add it to the file selector dropdown (kept alphabetically sorted), select it, and display it per 'Note Display Methods based on FileType' (see ./note-meta-data.md).
+
+                Visual fidelity on re-render {
+                    Because the imported note's stored content is byte-for-byte identical to the original AND it is displayed through the EXACT SAME display path as a normal note load (the rich text content is rendered by setting it as the editor's innerHTML and then re-decorating embeds; the media is shown in the media viewer), the imported note re-renders visually identical to the original note inside the app — same text/formatting, same embedded image/audio, same layout. This is guaranteed, not incidental.
+
+                    This guarantee DEPENDS on rich text embeds being fully self-contained: embedded images and audio are stored as inline "data:" URLs (see the Insert Image / Insert Audio buttons and 'Pasting an image'), NOT as external URLs or blob: URLs. Inline data URLs travel inside the content itself, so nothing can dangle or break on the imported copy. If embeds were ever changed to external/blob references, this visual-fidelity guarantee would no longer hold.
+
+                    Scope note: this "looks the same" guarantee applies when the file is re-imported and rendered INSIDE the app (it relies on the app's own CSS, e.g. the .media-embed layout). Opening the raw exported .html standalone in a browser is a different scenario — the self-contained text and data-URL images still display, but without the app's CSS the embed containers won't look identical. Making the standalone .html visually faithful (self-styled) is intentionally out of scope.
+                }
+
+                Net effect / round-trip guarantee: importing a file previously produced by 'export the current note' recreates the note exactly as if it had originally been created (rich text) or uploaded (media) — same decrypted content (byte-for-byte), same name, same FileType and CreationMethod — differing ONLY in the regenerated timestamps (and, as always, in the ciphertext bytes, since each encryption uses a fresh random nonce; the decrypted content is identical).
             }
 
 
