@@ -359,6 +359,12 @@ Main page {
 
                     }
 
+                    Pasting an image {
+                        When the user pastes an image (e.g. a screenshot, or any image on the clipboard) into the rich text editor, it must be inserted at the cursor's current position inside the SAME kind of embedded "container" that the Insert Image button produces — NOT as a bare/plain pasted image. This means the pasted image gets the identical embedded-image-container treatment: the same selection-and-delete behaviour and the same ✕ delete button described in 'Embedded media selection and deletion' below (including the PC vs mobile differences, the resolution rules, and the tap-to-open-in-new-window behaviour on mobile), so it can be removed from the note just like an inserted image, and is removed only from the note, not from the user's device.
+
+                        Only image content on the clipboard is intercepted this way. Pasting other clipboard content (e.g. plain text) keeps its normal default paste behaviour.
+                    }
+
                     Embedded media selection and deletion {
                         Embedded images and audio players are inserted as non-editable "containers", so the text caret cannot enter them and the browser will NOT delete them on its own. The app must handle this explicitly.
 

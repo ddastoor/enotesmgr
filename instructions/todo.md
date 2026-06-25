@@ -16,7 +16,6 @@ or wipe, etc.
 - when an existing user logs in and it asks me for the master password, then at that time, if i press the back button, it should invalidate the google auth and redirect to the login page.
 - on mobile, when i tap an image from the editable area and it opens in a new browser window, i want to be able to long press it and be able to download it.
 
-- copy paste a screen shot in rich text area.
 - separate meta button showing meta data for each note in a popup
 - recovery code - 8 alphanumeric
 - test recovery codes funcionality 

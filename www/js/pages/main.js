@@ -208,6 +208,11 @@ export function render(container) {
 
     container.querySelector("#editor").addEventListener("input", markDirty);
 
+    // Intercept pasted images (e.g. screenshots) so they get wrapped in the same
+    // .media-embed structure (with the ✕ delete button) as the Insert Image
+    // button, instead of the browser's bare <img>.
+    container.querySelector("#editor").addEventListener("paste", onEditorPaste);
+
     // Keyboard undo/redo. Routed through the same execCommand the toolbar
     // Undo/Redo buttons use, so the keyboard and buttons share one history.
     // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z = redo.
@@ -647,6 +652,13 @@ async function onInsertImage(e) {
     e.target.value = "";
     if (!file) return;
     const dataUrl = await readFileAsDataURL(file);
+    insertImageEmbed(dataUrl);
+}
+
+// Build the .media-embed wrapper for an image (with the ✕ delete button and
+// mobile tap-to-open) and drop it at the caret. Shared by the Insert Image
+// button and the paste handler.
+function insertImageEmbed(dataUrl) {
     const span = document.createElement("span");
     span.className = "media-embed";
     span.contentEditable = "false";
@@ -660,6 +672,22 @@ async function onInsertImage(e) {
     addEmbedDeleteButton(span);
     insertNodeAtCursor(span);
     markDirty();
+}
+
+// When an image (e.g. a pasted screenshot) is on the clipboard, intercept the
+// paste and insert it as a proper .media-embed instead of the browser's bare
+// <img>. Non-image pastes (text, etc.) fall through to default handling.
+async function onEditorPaste(e) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    const imageItem = Array.from(items)
+        .find((it) => it.kind === "file" && it.type.startsWith("image/"));
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    const dataUrl = await readFileAsDataURL(file);
+    insertImageEmbed(dataUrl);
 }
 
 async function onInsertAudio(e) {
