@@ -19,5 +19,4 @@ or wipe, etc.
 - separate meta button showing meta data for each note in a popup
 - recovery code - 8 alphanumeric
 - test recovery codes funcionality 
-- import / export
 - local mode
