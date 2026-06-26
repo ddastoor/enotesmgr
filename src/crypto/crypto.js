@@ -1,11 +1,3 @@
-
-// import {
-//     WASI,
-//     OpenFile,
-//     File,
-//     ConsoleStdout
-// } from "https://esm.sh/@bjorn3/browser_wasi_shim";
-
 import { WASI, OpenFile, File, ConsoleStdout } from "./wasi-shim-vendor/dist/wasi-shim.js";
 
 const wasi = new WASI([], [], [new OpenFile(new File([])), new ConsoleStdout(), new ConsoleStdout()]);
@@ -13,30 +5,37 @@ const wasi = new WASI([], [], [new OpenFile(new File([])), new ConsoleStdout(), 
 let wasmInstance = null;
 
 async function initWasm() {
-    try {
-        const response = await fetch("js/crypto/crypto.wasm");
-        const wasmBytes = await response.arrayBuffer();
+    const response = await fetch("js/crypto/crypto.wasm");
+    const wasmBytes = await response.arrayBuffer();
 
-        const wasmModule = await WebAssembly.instantiate(wasmBytes, {
-            wasi_snapshot_preview1: wasi.wasiImport
-        });
+    const wasmModule = await WebAssembly.instantiate(wasmBytes, {
+        wasi_snapshot_preview1: wasi.wasiImport
+    });
 
-        wasmInstance = wasmModule.instance;
-        wasi.initialize(wasmInstance);
+    wasmInstance = wasmModule.instance;
+    wasi.initialize(wasmInstance);
 
-        if (wasmInstance.exports._start) {
+    // This module's _start is a WASI "command" entry point that ends by calling
+    // proc_exit, which the shim surfaces as a trap. That's expected — swallow it
+    // and proceed to the real initializer below.
+    if (wasmInstance.exports._start) {
+        try {
             wasmInstance.exports._start();
+        } catch (_) {
+            /* expected proc_exit trap */
         }
-        if (wasmInstance.exports.crypto_init) {
-            wasmInstance.exports.crypto_init();
-        }
-
-    } catch (err) {
-        console.error("Failed to init wasm:", err);
+    }
+    if (wasmInstance.exports.crypto_init) {
+        wasmInstance.exports.crypto_init();
     }
 }
 
-initWasm();
+// Resolves once the WASM crypto module is ready to use. Callers should await
+// this before invoking encryptData / decryptData.
+export const cryptoReady = initWasm().catch((err) => {
+    console.error("Failed to init wasm:", err);
+    throw err;
+});
 
 function wasm_malloc(size) {
     if (!wasmInstance) throw new Error("WASM not initialized");
@@ -131,6 +130,22 @@ export function encryptData(text, password) {
     return base64Out;
 }
 
+// Encrypt `text` with `password`, then immediately decrypt the result and
+// confirm it matches `text` byte-for-byte before returning the ciphertext.
+// Throws ENCRYPT_VERIFY_FAILED if the round-trip does not reproduce the input,
+// so callers can refuse to persist ciphertext that would not decrypt cleanly.
+export function encryptVerified(text, password) {
+    const cipher = encryptData(text, password);
+    let roundTrip;
+    try {
+        roundTrip = decryptData(cipher, password);
+    } catch (_) {
+        throw new Error("ENCRYPT_VERIFY_FAILED");
+    }
+    if (roundTrip !== text) throw new Error("ENCRYPT_VERIFY_FAILED");
+    return cipher;
+}
+
 export function decryptData(base64Text, password) {
     const passwordBytes = utf8Encode(password);
     const passwordPtr = wasm_malloc(passwordBytes.length);
@@ -165,4 +180,14 @@ export function decryptData(base64Text, password) {
     wasm_free(passwordPtr);
 
     return plainText;
+}
+
+// SHA-256 hex digest of a string, using the browser's Web Crypto (unrelated to
+// the symmetric crypto above). Used to name recovery files.
+export async function sha256Hex(str) {
+    const data = utf8Encode(str);
+    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 }
