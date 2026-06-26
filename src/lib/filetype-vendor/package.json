@@ -1,0 +1,19 @@
+{
+  "name": "filetype-vendor",
+  "version": "1.0.0",
+  "main": "entry.js",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --outfile=dist/filetype.js --format=esm --target=es2022"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Local-vendored, esbuild-bundled magic-number file type detection (file-type). No CDN / runtime build step.",
+  "dependencies": {
+    "file-type": "^22.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}

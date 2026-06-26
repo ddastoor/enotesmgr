@@ -12,6 +12,7 @@ import {
 import { encryptData, decryptData } from "../crypto/crypto.js";
 import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal } from "../lib/dialogs.js";
 import { nowStamp } from "../lib/meta.js";
+import { detectFileType } from "../lib/fileType.js";
 import { showNoteSearch } from "../lib/searchDialog.js";
 import { openMenu } from "./menu.js";
 
@@ -53,14 +54,6 @@ async function snapshotContentHash() {
 // appProperties; such notes migrate to appProperties the next time they're saved.
 const META_BEGIN = "[metadata begin]";
 const META_END = "[metadata end]";
-
-// Map an uploaded file's MIME type to an allowed FileType, or null if neither
-// image nor audio.
-function fileTypeFromMime(mime) {
-    if (mime && mime.startsWith("image/")) return "image";
-    if (mime && mime.startsWith("audio/")) return "audio";
-    return null;
-}
 
 // Strip a trailing extension from a user-entered filename ('mynote.txt' -> 'mynote').
 function stripExtension(name) {
@@ -530,7 +523,9 @@ async function onUploadFile(e) {
     e.target.value = ""; // allow re-selecting same file later
     if (!file) return;
 
-    const fileType = fileTypeFromMime(file.type);
+    // Determine the type from the file's CONTENT (magic number), not its
+    // extension / File.type — see ../lib/fileType.js.
+    const fileType = await detectFileType(file);
     if (!fileType) {
         await showAlert("Only image or audio files can be uploaded.", "Error");
         return;

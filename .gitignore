@@ -141,3 +141,11 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Vendored, locally-bundled libs (esbuild output committed so the app stays
+# self-contained / offline — no CDN or URL deps at runtime). The `dist` rule
+# above would otherwise hide these built bundles. node_modules/ stays ignored:
+# it's build-only and regenerable via `npm install` from the committed
+# package-lock.json. Rebuild: `cd <vendor> && npm install && npm run build`.
+!src/lib/filetype-vendor/dist/
+!www/js/lib/filetype-vendor/dist/
