@@ -10,8 +10,9 @@ Export CLI utility {
         }
     }
 
-    On startup {
-        Create an output \(root\) directory named 'my-notes-export_<YYYYMMDD_HHMM>' \(timestamped\) in the current directory. All exported notes are written here.
+    Output directory {
+        For the decrypted-export operations \(online without -x, and offline\), the tool creates a timestamped directory named 'my-notes-export_<YYYYMMDD_HHMM>' in the current directory and writes all exported notes there.
+        \(The online -x mode does NOT use this directory; it creates its own 'eNotes Manager_<YYYYMMDD_HHMM>' directory - see its description below.\)
     }
 
     It runs in two modes, selected by the command-line argument -m <on|off> {
@@ -41,7 +42,7 @@ Export CLI utility {
 
             This mode is an INTERACTIVE WIZARD. The user can just run 'node mynotes-export.js -m off' and be prompted for everything, in this order {
                 1. Path to config.json \(the encrypted config file\).
-                2. Whether to export a single note file or a whole directory of note files.
+                2. Whether to export a single note file or a whole directory of note files \(default: directory\).
                 3. The path to that single file, or to that directory.
                 4. The master password \(hidden input\).
                 Any path that does not exist is re-prompted until valid.
@@ -61,12 +62,14 @@ Export CLI utility {
     }
 
     Output rules \(same in both modes\) {
-        Determine each note's type from its DECRYPTED CONTENT \(it is a data: URL for an uploaded media note, otherwise it is rich text html\) - there is no Drive appProperties to rely on offline.
+        Determine each note's type from its DECRYPTED CONTENT \(it is a data: URL - data:image/, data:audio/ or data:video/ - for an uploaded media note, otherwise it is rich text html\). The type is inferred from content in BOTH modes \(Drive appProperties are not relied upon\).
 
         if (it was an uploaded media note) {
-            Save it under the exact same filename \(the note's own name, which already carries its original extension\), writing the decoded original bytes \(decode the data: URL\).
+            Save it under the same filename \(the note's own name, which already carries its original extension\), writing the decoded original bytes \(decode the data: URL\). If the name happens to have no extension, derive one from the content's MIME type.
         } else {
             It is a rich text note: create a standalone html file '<note-name>.html' that renders the rich note exactly how the app's rich text editor displayed it \(wrap the note's html in the editor's markup with the editor styles inlined; embedded images/audio are inline data: URLs so they render with no network\).
         }
+
+        Filenames are made filesystem-safe, and on a name collision within the output directory a numeric suffix \(e.g. " (1)"\) is added so nothing is overwritten.
     }
 }

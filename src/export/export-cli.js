@@ -50,9 +50,10 @@ function usageExit(msg) {
         "Usage:\n" +
         "  Online:  node mynotes-export.js -m on  [-t <export-token>] [-x]\n" +
         "           (get the token from the app menu: 'Copy Export Token')\n" +
-        "           (-x: replicate the whole 'eNotes Manager' Drive folder as a\n" +
-        "            dated, still-encrypted backup on Google Drive, then exit)\n" +
-        "  Offline: node mynotes-export.js -m off -c <config.json> (-n <note-file> | -d <notes-dir>)\n"
+        "           (-x: download the whole 'eNotes Manager' Drive folder as a\n" +
+        "            dated, still-encrypted LOCAL backup, then exit)\n" +
+        "  Offline: node mynotes-export.js -m off   (interactive wizard; optionally\n" +
+        "           pre-fill with -c <config.json> and -n <note-file> | -d <notes-dir>)\n"
     );
     process.exit(1);
 }

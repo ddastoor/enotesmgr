@@ -20,6 +20,17 @@
                         }
                     }
 
+                    <!-- restart recovery reminders -->
+                    {
+                        menu item: "Restart Recovery Reminders" {
+                            tooltip: "Start recovery code generation reminder again"
+                            on click {
+                                Dismiss the menu pane
+                                Show the restart-recovery-reminder popup (see ./menu/menu-items/start-recovery-code-reminder.md).
+                            }
+                        }
+                    }
+
                     <!-- export CLI tools (PC only - see ../../export-cli.md) -->
                     {
                         menu item: "Download Export Utility" {
@@ -37,7 +48,8 @@
                             tooltip: "Copy a token for the export utility's online mode"
                             on click {
                                 Dismiss the menu pane
-                                Copy the app's current Google Drive access token to the clipboard \(if the clipboard is unavailable, show the token so it can be copied manually\), and tell the user to paste it into the export utility's online mode \(node mynotes-export.js -m on\). The token is valid for about an hour. This is the 'token hand-off' that lets the CLI access Drive without doing its own OAuth - see ../../export-cli.md.
+                                If there is no active session token, inform the user to log in again and stop.
+                                Otherwise copy the app's current Google Drive access token to the clipboard \(if the clipboard is unavailable, show the token so it can be copied manually\), and tell the user to paste it into the export utility's online mode \(node mynotes-export.js -m on\). The token is valid for about an hour. This is the 'token hand-off' that lets the CLI access Drive without doing its own OAuth - see ../../export-cli.md.
                             }
                         }
                     }
