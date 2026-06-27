@@ -22,29 +22,41 @@ Export CLI utility {
 
             Necessary and sufficient command-line arguments {
                 -t \(optional\) : the export token. If omitted, the tool prompts the user to paste it.
+                -x \(optional, flag\) : replicate-the-whole-tree mode \(see below\).
             }
 
-            Ask for the master password from the CLI \(hidden input\).
+            if (the -x flag is given) {
+                Do NOT ask for the master password \(no decryption happens\) and do NOT use the normal 'my-notes-export_...' output directory.
+                After obtaining the token, download the user's ENTIRE 'eNotes Manager' folder tree from Google Drive onto the LOCAL device, AS IS \(every subfolder and file mirrored locally, each file written still-encrypted exactly as stored\), into a new local directory named 'eNotes Manager_<YYYYMMDD_HHMM>'. Then exit.
+            } else {
+                Ask for the master password from the CLI \(hidden input\).
 
-            Fetch config.json from the user's Config folder on Google Drive and decrypt it with the master password to get the file password \(see ./crypto.md\).
-            Then loop through ALL the note files in the Entries folder, decrypt each one using the file password, and write each decrypted note into the output directory per 'Output rules'.
+                Fetch config.json from the user's Config folder on Google Drive and decrypt it with the master password to get the file password \(see ./crypto.md\).
+                Then loop through ALL the note files in the Entries folder, decrypt each one using the file password, and write each decrypted note into the output directory per 'Output rules'.
+            }
         }
 
         offline \(-m off\) {
             No google oauth takes place here.
 
-            Necessary and sufficient command-line arguments {
-                -c : local file path of config.json \(the encrypted config file\).
-                -n or -d \(not both; if both are given, -d takes precedence\) {
+            This mode is an INTERACTIVE WIZARD. The user can just run 'node mynotes-export.js -m off' and be prompted for everything, in this order {
+                1. Path to config.json \(the encrypted config file\).
+                2. Whether to export a single note file or a whole directory of note files.
+                3. The path to that single file, or to that directory.
+                4. The master password \(hidden input\).
+                Any path that does not exist is re-prompted until valid.
+            }
+
+            The following are OPTIONAL command-line arguments that pre-fill wizard answers \(anything supplied is not asked for\) {
+                -c : local file path of config.json.
+                -n or -d \(if both are given, -d takes precedence\) {
                     -n <local file path of a single encrypted note file>
                     -d <local dir path containing ALL the encrypted note entry files>
                 }
             }
 
-            Ask for the master password from the CLI \(hidden input\).
-
-            Decrypt the config.json at -c with the master password to get the file password.
-            Then decrypt the single note \(-n\) or every file in the directory \(-d\) using the file password, and write each into the output directory per 'Output rules'.
+            Decrypt the config.json with the master password to get the file password.
+            Then decrypt the single note or every file in the directory using the file password, and write each into the output directory per 'Output rules'.
         }
     }
 
