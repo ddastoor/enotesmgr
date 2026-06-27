@@ -527,6 +527,15 @@ body {
     cursor: pointer;
 }
 .drawer-item:hover { background: var(--accent-soft); }
+.drawer-section {
+    margin-top: 8px;
+    padding: 6px 4px 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    opacity: .6;
+}
 
 /* ---- Toolbar search button + note search dialog --------------------------- */
 .tb-search { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; }

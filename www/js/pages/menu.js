@@ -1,10 +1,61 @@
 import { navigate } from "../app.js";
+import { state } from "../state.js";
+import { showAlert } from "../lib/dialogs.js";
 import { showRestartReminderPopup } from "../recoveryReminder.js";
+
+const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+// Download the prebuilt Node export CLI. It's a static same-origin file
+// (www/mynotes-export.js); a download anchor saves it without loading it into
+// JS memory. PC only (it's a command-line tool — see ../../instructions).
+function downloadExportUtility() {
+    const a = document.createElement("a");
+    a.href = "mynotes-export.js";
+    a.download = "mynotes-export.js";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+// Hand the current Drive access token to the export CLI's online mode (token
+// hand-off — see ../../export-cli.md). The token is the live session token the
+// app itself uses; the CLI pastes it and calls Drive directly, so the CLI needs
+// no OAuth. Valid ~1 hour. PC only.
+async function copyExportToken() {
+    const token = state.accessToken;
+    if (!token) {
+        await showAlert("No active session token — please log in again.", "Export token");
+        return;
+    }
+    let copied = false;
+    try { await navigator.clipboard.writeText(token); copied = true; } catch { /* clipboard blocked */ }
+    await showAlert(
+        copied
+            ? "Export token copied to the clipboard.\n\nIn a terminal run:\n  node mynotes-export.js -m on\n\nand paste the token when prompted. It is valid for about 1 hour."
+            : "Copy this export token and paste it into the CLI ('node mynotes-export.js -m on') when prompted:\n\n" + token,
+        "Export token"
+    );
+}
 
 // Left vertical menu pane that slides in from the left. Rendered into
 // #overlay-root so it floats above the current page.
 export function openMenu() {
     const rootEl = document.getElementById("overlay-root");
+
+    // The export utility is a desktop command-line tool, so its download item is
+    // shown on PC only (not mobile).
+    const exportItem = isMobile() ? "" : `
+                <li class="drawer-section">Tools (PC only)</li>
+                <li>
+                    <button class="drawer-item" data-action="dl-export" title="Download the command-line export utility (mynotes-export.js)">
+                        Download Export Utility
+                    </button>
+                </li>
+                <li>
+                    <button class="drawer-item" data-action="copy-token" title="Copy a token for the export utility's online mode">
+                        Copy Export Token
+                    </button>
+                </li>`;
 
     const wrap = document.createElement("div");
     wrap.className = "drawer-backdrop";
@@ -21,7 +72,7 @@ export function openMenu() {
                     <button class="drawer-item" data-action="restart-reminder" title="Start recovery code generation reminder again">
                         Restart Recovery Reminders
                     </button>
-                </li>
+                </li>${exportItem}
             </ul>
         </nav>`;
 
@@ -42,6 +93,16 @@ export function openMenu() {
     wrap.querySelector('[data-action="restart-reminder"]').addEventListener("click", () => {
         close();
         showRestartReminderPopup();
+    });
+    const exportBtn = wrap.querySelector('[data-action="dl-export"]');
+    if (exportBtn) exportBtn.addEventListener("click", () => {
+        close();
+        downloadExportUtility();
+    });
+    const tokenBtn = wrap.querySelector('[data-action="copy-token"]');
+    if (tokenBtn) tokenBtn.addEventListener("click", () => {
+        close();
+        copyExportToken();
     });
     document.addEventListener("keydown", onKey);
 

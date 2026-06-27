@@ -5,8 +5,14 @@ const wasi = new WASI([], [], [new OpenFile(new File([])), new ConsoleStdout(), 
 let wasmInstance = null;
 
 async function initWasm() {
-    const response = await fetch("js/crypto/crypto.wasm");
-    const wasmBytes = await response.arrayBuffer();
+    // Self-contained builds (the Node export CLI, mynotes-export.js) inline the
+    // wasm as base64 on this global, since there is no server to fetch() from.
+    // When the global is absent (the normal online app) we fetch as before — so
+    // the online browser code path is completely unchanged.
+    const inlined = globalThis.__CRYPTO_WASM_BYTES__;
+    const wasmBytes = inlined
+        ? base64ToBytes(inlined).buffer
+        : await (await fetch("js/crypto/crypto.wasm")).arrayBuffer();
 
     const wasmModule = await WebAssembly.instantiate(wasmBytes, {
         wasi_snapshot_preview1: wasi.wasiImport
