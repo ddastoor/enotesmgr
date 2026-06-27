@@ -124,14 +124,15 @@ export function showConfirm(message, title = "") {
 
 // Returns the entered string, or null if cancelled. When selectAll is true the
 // initial text is selected (highlighted) once focused, so the user can overtype.
-export function showPrompt(message, { title = "", initial = "", placeholder = "", selectAll = false } = {}) {
+export function showPrompt(message, { title = "", initial = "", placeholder = "", selectAll = false, type = "text" } = {}) {
     const body = document.createElement("div");
     body.className = "modal-text";
     const label = document.createElement("div");
     label.textContent = message;
     label.style.marginBottom = "10px";
     const input = document.createElement("input");
-    input.type = "text";
+    input.type = type;
+    input.autocomplete = "off";
     input.className = "text-input";
     input.value = initial;
     input.placeholder = placeholder;

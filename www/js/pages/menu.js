@@ -2,6 +2,7 @@ import { navigate } from "../app.js";
 import { state } from "../state.js";
 import { showAlert } from "../lib/dialogs.js";
 import { showRestartReminderPopup } from "../recoveryReminder.js";
+import { wipeAppData } from "../wipeAppData.js";
 
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
@@ -57,6 +58,15 @@ export function openMenu() {
                     </button>
                 </li>`;
 
+    // "Wipe all App Data" is destructive and desktop-only (PC only).
+    const wipeItem = isMobile() ? "" : `
+                <li class="drawer-section">Danger Zone (PC only)</li>
+                <li>
+                    <button class="drawer-item drawer-item-danger" data-action="wipe-data" title="Permanently delete the eNotes Manager folder and all its contents from Google Drive">
+                        Wipe all App Data
+                    </button>
+                </li>`;
+
     const wrap = document.createElement("div");
     wrap.className = "drawer-backdrop";
     wrap.innerHTML = `
@@ -72,7 +82,7 @@ export function openMenu() {
                     <button class="drawer-item" data-action="restart-reminder" title="Start recovery code generation reminder again">
                         Restart Recovery Reminders
                     </button>
-                </li>${exportItem}
+                </li>${exportItem}${wipeItem}
             </ul>
         </nav>`;
 
@@ -103,6 +113,11 @@ export function openMenu() {
     if (tokenBtn) tokenBtn.addEventListener("click", () => {
         close();
         copyExportToken();
+    });
+    const wipeBtn = wrap.querySelector('[data-action="wipe-data"]');
+    if (wipeBtn) wipeBtn.addEventListener("click", () => {
+        close();
+        wipeAppData();
     });
     document.addEventListener("keydown", onKey);
 

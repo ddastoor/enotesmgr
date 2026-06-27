@@ -527,6 +527,8 @@ body {
     cursor: pointer;
 }
 .drawer-item:hover { background: var(--accent-soft); }
+.drawer-item-danger { color: var(--danger-deep); }
+.drawer-item-danger:hover { background: var(--danger); color: #4a1414; }
 .drawer-section {
     margin-top: 8px;
     padding: 6px 4px 0;
