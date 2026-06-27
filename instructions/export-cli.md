@@ -18,8 +18,8 @@ Export CLI utility {
     It runs in two modes, selected by the command-line argument -m <on|off> {
 
         online \(-m on\) {
-            Auth is by TOKEN HAND-OFF - the tool does NO Google OAuth itself \(this is the most future-proof: the CLI has no OAuth flow to be deprecated\). The SPA already signs in \(via Google's GIS library\) and holds a live drive.file access token; the user copies it from the app's menu \("Copy Export Token", PC only - see ./UI/menu/left-vertical-menu.md\) and gives it to the tool. The tool then calls the Google Drive REST API directly with that token. The token is valid for about an hour; an expired/invalid token yields a clear error telling the user to re-copy it.
-            Note: drive.file restricts visibility to files created by the same OAuth client; the SPA's token is that client, so it sees exactly the right notes.
+            Auth is by TOKEN HAND-OFF - the tool does NO Google OAuth itself \(this is the most future-proof: the CLI has no OAuth flow to be deprecated\). The SPA already signs in \(via Google's GIS library\) and holds a live Drive access token \(drive.appdata by default, or drive.file - whichever STORAGE_MODE the app is built with\); the user copies it from the app's menu \("Copy Export Token", PC only - see ./UI/menu/left-vertical-menu.md\) and gives it to the tool. The tool then calls the Google Drive REST API directly with that token. The token is valid for about an hour; an expired/invalid token yields a clear error telling the user to re-copy it.
+            Note: both scopes keep the notes app-private - drive.appdata confines them to the hidden Application Data folder, and drive.file restricts visibility to files created by the same OAuth client; either way the SPA's token sees exactly the right notes. The CLI must search the matching space \(appDataFolder vs drive\), which it selects via its own STORAGE_MODE switch kept in sync with the app.
 
             Necessary and sufficient command-line arguments {
                 -t \(optional\) : the export token. If omitted, the tool prompts the user to paste it.

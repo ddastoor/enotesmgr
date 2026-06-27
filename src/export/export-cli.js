@@ -13,10 +13,11 @@
 //
 // Online auth = token hand-off (no OAuth in the CLI, the most future-proof
 // option): the SPA already signs in via Google's maintained GIS library and
-// holds a valid drive.file access token. The user copies it from the app's menu
-// ("Copy Export Token", PC-only) and pastes it here (or passes -t <token>). The
-// CLI just calls the Drive REST API with that token — so it has zero OAuth
-// surface to be deprecated, and needs no client id, secret, or redirect URI.
+// holds a valid Drive access token (drive.appdata by default, or drive.file —
+// see STORAGE_MODE below). The user copies it from the app's menu ("Copy Export
+// Token", PC-only) and pastes it here (or passes -t <token>). The CLI just calls
+// the Drive REST API with that token — so it has zero OAuth surface to be
+// deprecated, and needs no client id, secret, or redirect URI.
 import { cryptoReady, decryptData } from "../../www/js/crypto/crypto.js";
 import {
     mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync,
@@ -25,6 +26,16 @@ import { join, basename, extname } from "node:path";
 import readline from "node:readline";
 
 const DRIVE = "https://www.googleapis.com/drive/v3";
+
+// WHERE the "eNotes Manager" tree lives in Drive. Must match the web app's
+// www/js/lib/driveConfig.js (the CLI keeps its own copy because it is a
+// self-contained bundle). "appdata" -> hidden Application Data folder
+// (appDataFolder), the default; "drivefile" -> visible Drive root.
+const STORAGE_MODE = "appdata"; // "appdata" | "drivefile"
+const STORAGE = {
+    appdata: { rootParent: "appDataFolder", spaces: "appDataFolder" },
+    drivefile: { rootParent: "root", spaces: "drive" },
+}[STORAGE_MODE];
 
 // --- CLI args ----------------------------------------------------------------
 function parseArgs(argv) {
@@ -218,7 +229,7 @@ const escQ = (s) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 async function findChild(name, parentId, token, folderOnly) {
     let q = `name='${escQ(name)}' and '${parentId}' in parents and trashed=false`;
     if (folderOnly) q += ` and mimeType='application/vnd.google-apps.folder'`;
-    const url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`;
+    const url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=${STORAGE.spaces}`;
     const j = await (await driveGet(url, token)).json();
     return j.files && j.files[0];
 }
@@ -228,7 +239,7 @@ async function listChildren(parentId, token) {
     let pageToken = "";
     do {
         const q = `'${parentId}' in parents and trashed=false`;
-        let url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,appProperties)&pageSize=1000&spaces=drive`;
+        let url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,appProperties)&pageSize=1000&spaces=${STORAGE.spaces}`;
         if (pageToken) url += `&pageToken=${pageToken}`;
         const j = await (await driveGet(url, token)).json();
         out.push(...(j.files || []));
@@ -260,7 +271,7 @@ async function replicateTreeLocal(srcId, destDir, token) {
 
 // --- modes -------------------------------------------------------------------
 async function runOnline(args) {
-    // Token hand-off: the app's "Copy Export Token" menu gives a live drive.file
+    // Token hand-off: the app's "Copy Export Token" menu gives a live Drive
     // access token; we use it directly (no OAuth in the CLI).
     const token = args.t || await promptVisible(
         "Paste your export token (from the app menu 'Copy Export Token'): ");
@@ -273,7 +284,7 @@ async function runOnline(args) {
     const rootDir = makeRootDir();
     console.log("Output directory: " + rootDir);
 
-    const manager = await findChild("eNotes Manager", "root", token, true);
+    const manager = await findChild("eNotes Manager", STORAGE.rootParent, token, true);
     if (!manager) throw new Error("Could not find the 'eNotes Manager' folder for this account.");
     const configFolder = await findChild("Config", manager.id, token, true);
     const entriesFolder = await findChild("Entries", manager.id, token, true);
@@ -299,7 +310,7 @@ async function runOnline(args) {
 // onto the LOCAL device into a dated folder 'eNotes Manager_<YYYYMMDD_HHMM>',
 // preserving the folder structure and file contents.
 async function runReplicate(token) {
-    const src = await findChild("eNotes Manager", "root", token, true);
+    const src = await findChild("eNotes Manager", STORAGE.rootParent, token, true);
     if (!src) throw new Error("Could not find the 'eNotes Manager' folder for this account.");
     const destDir = `eNotes Manager_${stamp()}`;
     console.log(`Replicating Drive 'eNotes Manager' -> local '${destDir}' (encrypted, as-is)...`);

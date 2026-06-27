@@ -1,9 +1,12 @@
 // Google OAuth via Google Identity Services (GIS) token client.
-// We only request the drive.file scope; the user's email is later obtained from
-// the Drive about endpoint, so no extra profile scopes are needed.
+// We request a single Drive scope (drive.appdata by default — see driveConfig.js;
+// the alternative is drive.file). The user's email is later obtained from the
+// Drive about endpoint, so no extra profile scopes are needed.
+
+import { DRIVE_SCOPE } from "./driveConfig.js";
 
 const CLIENT_ID = "404699677771-aljb7q3d6789dh535g5r7piu3b2fdabf.apps.googleusercontent.com";
-const SCOPE = "https://www.googleapis.com/auth/drive.file";
+const SCOPE = DRIVE_SCOPE;
 
 let tokenClient = null;
 let gisReadyPromise = null;

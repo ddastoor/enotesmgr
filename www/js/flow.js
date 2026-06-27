@@ -6,6 +6,7 @@ import {
     ensureFolder,
     findChild,
 } from "./drive.js";
+import { DRIVE_ROOT_PARENT } from "./lib/driveConfig.js";
 
 // Resolve the logged-in user's email/username and stash on state.
 export async function loadUserInfo() {
@@ -17,7 +18,9 @@ export async function loadUserInfo() {
 
 // Ensure the "eNotes Manager" folder tree exists; populate state.folders.
 export async function ensureFolders() {
-    const manager = await ensureFolder("eNotes Manager", "root");
+    // Top-level folder lives under the configured root (appDataFolder by default,
+    // so it is hidden from the user; see lib/driveConfig.js).
+    const manager = await ensureFolder("eNotes Manager", DRIVE_ROOT_PARENT);
     state.folders.manager = manager;
     state.folders.entries = await ensureFolder("Entries", manager);
     state.folders.config = await ensureFolder("Config", manager);

@@ -2,6 +2,7 @@
 // already-encrypted base64 text, saved with mimeType text/plain.
 
 import { state } from "./state.js";
+import { DRIVE_SPACES } from "./lib/driveConfig.js";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -38,7 +39,7 @@ function escapeQuery(name) {
 export async function findChild(parentId, name, folderOnly = false) {
     let q = `name='${escapeQuery(name)}' and '${parentId}' in parents and trashed=false`;
     if (folderOnly) q += ` and mimeType='${FOLDER_MIME}'`;
-    const url = `${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)&spaces=drive`;
+    const url = `${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)&spaces=${DRIVE_SPACES}`;
     const res = await driveFetch(url, { headers: authHeaders() });
     const data = await res.json();
     return data.files && data.files.length ? data.files[0] : null;
@@ -50,7 +51,7 @@ export async function listChildren(parentId) {
     let pageToken = null;
     do {
         const q = `'${parentId}' in parents and trashed=false`;
-        let url = `${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,appProperties)&pageSize=1000&spaces=drive`;
+        let url = `${API}/files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,appProperties)&pageSize=1000&spaces=${DRIVE_SPACES}`;
         if (pageToken) url += `&pageToken=${pageToken}`;
         const res = await driveFetch(url, { headers: authHeaders() });
         const data = await res.json();
