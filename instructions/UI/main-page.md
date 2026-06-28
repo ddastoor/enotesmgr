@@ -154,8 +154,8 @@ Main page {
                 }
 
                 Upload Button {
-                    label: "Upload"
-                    tooltip: "Upload an image or audio file"
+                    label: "↑U"
+                    tooltip: "Upload"
                     on click {
 
                         If (an existing note is already loaded \(i.e., file selector is not showing dummy entry ""\) ) {
