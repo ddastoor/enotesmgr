@@ -104,7 +104,7 @@ Main page {
                 }
 
                 Refresh button {
-                    label: "Refresh"
+                    label: the clockwise round-arrow character "↻" (Unicode U+21BB, CLOCKWISE OPEN CIRCLE ARROW). aria-label "Refresh".
                     tooltip: "Refresh the current note"
                     on click {
                         Re-fetch the currently selected note file from entries folder, decrypt it using the file password and display the contents in the rich text editor or media viewer depending on the type of file that was selected.

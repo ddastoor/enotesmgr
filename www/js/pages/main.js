@@ -132,7 +132,7 @@ export function render(container) {
             <section class="toolbar glass">
                 <select id="file-select" class="file-select" title="Select a note"></select>
                 <button id="tb-search" class="btn btn-tonal tb-search" title="Search notes" aria-label="Search notes"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
-                <button id="tb-refresh" class="btn btn-tonal" title="Refresh the current note">Refresh</button>
+                <button id="tb-refresh" class="btn btn-tonal" title="Refresh the current note" aria-label="Refresh">↻</button>
                 <button id="tb-new" class="btn btn-tonal" title="Create a new note">New</button>
                 <button id="tb-upload" class="btn btn-tonal" title="Upload">↑U</button>
                 <button id="tb-save" class="btn btn-filled" title="Save the current note">Save</button>
