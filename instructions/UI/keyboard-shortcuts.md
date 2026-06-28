@@ -71,6 +71,12 @@ Main page keyboard shortcuts {
             action: show the keyboard shortcuts help popup - see ./keyboard-shortcuts-help-popup.md.
         }
 
+        'Escape' {
+            focus condition: anywhere (including inside the rich text editor, and while a button / text input / dropdown control has focus).
+            action: move focus out onto the main page - i.e. remove focus from whatever element currently has it (the rich text editor, a button, a text/dropdown control, etc.) so nothing on the page is focused. It does nothing beyond dropping focus.
+            note: per the Global conditions above, this only applies when no popup / dialog / menu is open over the main page; when one is open, Escape is handled by that popup (to close it), not by this shortcut.
+        }
+
     }
 
 }

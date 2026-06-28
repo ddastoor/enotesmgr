@@ -19,6 +19,7 @@ Keyboard shortcuts help popup {
             "M"                ->  "Open the More options menu"
             "X  or  Q"         ->  "Log out"
             "?"                ->  "Show this keyboard shortcuts help"
+            "Esc"              ->  "Move focus back to the page"
     }
 
     'Close' button {

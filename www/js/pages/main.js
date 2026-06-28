@@ -281,6 +281,15 @@ function onGlobalKeydown(e) {
     const ctrl = e.ctrlKey || e.metaKey;
     const key = e.key.toLowerCase();
 
+    // Escape: drop focus from wherever it is (the rich text editor, a button, a
+    // text/dropdown control, ...) back onto the page. Works regardless of current
+    // focus. (When a popup is open it handles Escape itself — we returned above.)
+    if (e.key === "Escape") {
+        e.preventDefault();
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        return;
+    }
+
     // Ctrl+S: Save. Works anywhere, including inside the editor.
     if (ctrl && !e.altKey && key === "s") {
         e.preventDefault();
@@ -325,6 +334,7 @@ function showShortcutsHelp() {
         ["M", "Open the More options menu"],
         ["X &nbsp;or&nbsp; Q", "Log out"],
         ["?", "Show this keyboard shortcuts help"],
+        ["Esc", "Move focus back to the page"],
     ];
     const body = document.createElement("div");
     body.className = "modal-text";
