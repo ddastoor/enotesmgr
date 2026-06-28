@@ -15,22 +15,28 @@ import { fileTypeFromBuffer } from "./filetype-vendor/dist/filetype.js";
 // formats we care about; 64 KB is a comfortable margin.
 const HEAD_BYTES = 64 * 1024;
 
-// The SINGLE place to extend when adding new supported types later (e.g. video /
-// PDF / MS Office): map a detected MIME type to the app's FileType enum, then
-// add a matching viewer in displayNote(). `match` runs against the detected MIME
-// string; the first matching rule wins.
+// The specially-displayed media types: a detected MIME matching one of these
+// rules is stored under that short FileType and rendered by its own viewer in
+// displayNote(). This is the place to extend when adding a new in-app viewer
+// later (e.g. video / PDF): add a row here and a matching viewer. `match` runs
+// against the detected MIME string; the first matching rule wins.
 const MIME_TO_FILETYPE = [
     { match: (mime) => mime.startsWith("image/"), fileType: "image" },
     { match: (mime) => mime.startsWith("audio/"), fileType: "audio" },
 ];
 
-// Detect a File/Blob's app FileType from its content. Returns the FileType
-// string (e.g. "image", "audio") or null when the type has no binary signature
-// or maps to nothing supported (the caller decides what to do with null).
+// Detect a File/Blob's app FileType from its content (magic number). Any file is
+// allowed for upload; the type is recorded as best we can:
+//   - "image" / "audio" for the specially-displayed media types,
+//   - the detected MIME type string (e.g. "application/pdf", "video/mp4") for any
+//     other recognised binary signature,
+//   - "UNKNOWN" when no binary signature is recognised.
+// Notes whose FileType is neither image nor audio are not rendered in-app (the
+// media viewer just prompts the user to download them — see pages/main.js).
 export async function detectFileType(file) {
     const head = new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
     const result = await fileTypeFromBuffer(head);
-    if (!result) return null; // no recognised binary signature
+    if (!result) return "UNKNOWN"; // no recognised binary signature
     const rule = MIME_TO_FILETYPE.find((r) => r.match(result.mime));
-    return rule ? rule.fileType : null;
+    return rule ? rule.fileType : result.mime; // keep the raw MIME for non-media types
 }

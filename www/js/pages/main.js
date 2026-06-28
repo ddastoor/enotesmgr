@@ -100,14 +100,18 @@ function inferLegacyMeta(text) {
 const isMediaType = (meta) => meta && meta.FileType !== "richtext";
 
 // Display content using the right control per the FileType metadata key.
+//   image / audio -> their media viewer (contents rendered)
+//   any other UPLOADED file (a detected non-media MIME type, or "UNKNOWN") ->
+//     a "Download this note to view" message; contents are NOT rendered.
+//   everything else (richtext) -> the rich text editor.
 function displayNote(meta, content) {
-    switch (meta && meta.FileType) {
-        case "image":
-        case "audio":
-            showMedia(content, meta.FileType);
-            break;
-        default:
-            showEditor(content);
+    const ft = meta && meta.FileType;
+    if (ft === "image" || ft === "audio") {
+        showMedia(content, ft);
+    } else if (meta && meta.CreationMethod === "upload") {
+        showUndisplayable();
+    } else {
+        showEditor(content);
     }
 }
 
@@ -158,7 +162,7 @@ export function render(container) {
             </section>
         </div>
 
-        <input id="hidden-upload" type="file" accept="image/*,audio/*" hidden />
+        <input id="hidden-upload" type="file" hidden />
         <input id="hidden-ins-image" type="file" accept="image/*" hidden />
         <input id="hidden-ins-audio" type="file" accept="audio/*" hidden />`;
 
@@ -311,7 +315,7 @@ function showShortcutsHelp() {
         ["/ &nbsp;or&nbsp; Ctrl + K", "Search notes"],
         ["Ctrl + S", "Save the current note"],
         ["N", "New note"],
-        ["U", "Upload an image or audio file"],
+        ["U", "Upload a file"],
         ["R", "Rename the current note"],
         ["D", "Delete the current note"],
         ["S", "Open Settings"],
@@ -524,12 +528,9 @@ async function onUploadFile(e) {
     if (!file) return;
 
     // Determine the type from the file's CONTENT (magic number), not its
-    // extension / File.type — see ../lib/fileType.js.
+    // extension / File.type — see ../lib/fileType.js. Any file may be uploaded;
+    // an unrecognised signature is recorded as "UNKNOWN".
     const fileType = await detectFileType(file);
-    if (!fileType) {
-        await showAlert("Only image or audio files can be uploaded.", "Error");
-        return;
-    }
     if (current) {
         const proceed = await maybeSaveBeforeSwitch();
         if (!proceed) return;
@@ -639,6 +640,20 @@ function showMedia(dataUrl, fileType) {
         audio.src = dataUrl;
         viewer.appendChild(audio);
     }
+}
+
+// For an uploaded note that isn't image/audio (a detected non-media type, or
+// UNKNOWN): we don't render its contents, just show a centered prompt to
+// download it (e.g. via the export utility). See instructions/UI/main-page.md.
+function showUndisplayable() {
+    document.getElementById("editor-wrap").hidden = true;
+    const viewer = document.getElementById("media-viewer");
+    viewer.hidden = false;
+    viewer.innerHTML = "";
+    const msg = document.createElement("div");
+    msg.className = "viewer-message";
+    msg.textContent = "Download this note to view";
+    viewer.appendChild(msg);
 }
 
 // --- rich text embeds --------------------------------------------------------

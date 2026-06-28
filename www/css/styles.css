@@ -425,6 +425,15 @@ body {
 .viewer-image { max-width: none; }
 .viewer-image.mobile-img { max-width: 100%; }
 .media-viewer audio { width: 100%; max-width: 520px; }
+/* Shown for an uploaded note that isn't image/audio (other / UNKNOWN type): its
+   contents are not rendered, just this centered prompt. */
+.viewer-message {
+    margin: auto;
+    padding: 24px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--on-surface-muted);
+}
 
 /* ---- Settings / recovery -------------------------------------------------- */
 .settings-scroll, .recovery-body {

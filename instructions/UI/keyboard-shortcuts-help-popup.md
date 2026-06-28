@@ -12,7 +12,7 @@ Keyboard shortcuts help popup {
             "/  or  Ctrl + K"  ->  "Search notes"
             "Ctrl + S"         ->  "Save the current note"
             "N"                ->  "New note"
-            "U"                ->  "Upload an image or audio file"
+            "U"                ->  "Upload a file"
             "R"                ->  "Rename the current note"
             "D"                ->  "Delete the current note"
             "S"                ->  "Open Settings"

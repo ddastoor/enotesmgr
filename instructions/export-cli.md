@@ -62,10 +62,10 @@ Export CLI utility {
     }
 
     Output rules \(same in both modes\) {
-        Determine each note's type from its DECRYPTED CONTENT \(it is a data: URL - data:image/, data:audio/ or data:video/ - for an uploaded media note, otherwise it is rich text html\). The type is inferred from content in BOTH modes \(Drive appProperties are not relied upon\).
+        Determine each note's type from its DECRYPTED CONTENT \(it is a data: URL of ANY MIME type - data:image/, data:audio/, data:video/, data:application/pdf, etc., including uploads the app recorded as "UNKNOWN" - for an uploaded file note, otherwise it is rich text html\). The type is inferred from content in BOTH modes \(Drive appProperties are not relied upon\); a leading "data:" marks an uploaded file.
 
-        if (it was an uploaded media note) {
-            Save it under the same filename \(the note's own name, which already carries its original extension\), writing the decoded original bytes \(decode the data: URL\). If the name happens to have no extension, derive one from the content's MIME type.
+        if (it was an uploaded file note) {
+            Save it under the same filename \(the note's own name, which already carries its original extension\), writing the decoded original bytes \(decode the data: URL\). If the name happens to have no extension, derive one from the content's MIME type. This applies to ALL uploaded file types \(image, audio, video, PDF, and any other\), not just media.
         } else {
             It is a rich text note: create a standalone html file '<note-name>.html' that renders the rich note exactly how the app's rich text editor displayed it \(wrap the note's html in the editor's markup with the editor styles inlined; embedded images/audio are inline data: URLs so they render with no network\).
         }

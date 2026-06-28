@@ -124,14 +124,15 @@ function makeRootDir() {
 }
 
 // --- type + filenames --------------------------------------------------------
-// A note's type comes from its DECRYPTED CONTENT: media notes are stored as a
-// data: URL carrying their own MIME, everything else is rich-text HTML. (Offline
-// note files have no Drive appProperties, so content is the reliable signal in
-// BOTH modes.)
+// A note's type comes from its DECRYPTED CONTENT: ANY uploaded file (image,
+// audio, video, PDF, or any other type — including ones the app recorded as
+// "UNKNOWN") is stored as a data: URL carrying its own MIME; everything else is a
+// rich-text HTML note. So a leading "data:" reliably marks an uploaded file in
+// BOTH modes (offline note files have no Drive appProperties, so the content is
+// the only signal). Uploaded files are decoded back to their original bytes;
+// rich-text notes become standalone .html.
 function inferType(content) {
-    const t = (content || "").trimStart();
-    if (t.startsWith("data:image/") || t.startsWith("data:audio/") || t.startsWith("data:video/")) return "media";
-    return "richtext";
+    return (content || "").trimStart().startsWith("data:") ? "file" : "richtext";
 }
 
 const MIME_EXT = {
@@ -140,6 +141,8 @@ const MIME_EXT = {
     "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg",
     "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/aac": "aac", "audio/flac": "flac",
     "video/mp4": "mp4", "video/webm": "webm",
+    "application/pdf": "pdf", "application/zip": "zip",
+    "text/plain": "txt", "application/json": "json",
 };
 
 function sanitizeName(name) {
@@ -203,7 +206,8 @@ function writeNote(rootDir, noteName, content) {
         writeFileSync(out, richTextToHtml(noteName, content), "utf8");
         return out;
     }
-    // Media: decode the data: URL back to its original bytes.
+    // Uploaded file (image / audio / video / PDF / any other type): decode the
+    // data: URL back to its original bytes and write them under the note's name.
     const decoded = dataUrlToBuffer(content);
     if (!decoded) { // not a parseable data URL — fall back to dumping raw
         const out = uniquePath(rootDir, safe);

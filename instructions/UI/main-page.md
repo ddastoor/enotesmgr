@@ -167,7 +167,7 @@ Main page {
 
                         Popup a file dialog for the user to upload the file.
 
-                        Determine the uploaded file's type by its CONTENT (magic number), NOT by its filename extension or the browser-provided File.type — see 'File type detection (magic number)'. If the detected type is not a currently-supported uploadable type (image or audio), show the error 'Only image or audio files can be uploaded.' and do not proceed.
+                        Determine the uploaded file's type by its CONTENT (magic number), NOT by its filename extension or the browser-provided File.type — see 'File type detection (magic number)'. ANY file type may be uploaded — there is no longer any type-based rejection. The detected type is recorded as best the magic number allows: "image" or "audio" for those media types, the detected MIME type string for any other recognised signature, or "UNKNOWN" when no signature is recognised (see 'File type detection (magic number)' and ./note-meta-data.md).
 
                         If the filename to be uploaded is already present in entries folder, show an error message 'Filename already exists' and do not proceed. 
                         
@@ -176,7 +176,7 @@ Main page {
                                 "DateTimeCreated" = current date and time in [date]T[time] format
                                 "DateTimeModified" = same as "DateTimeCreated"
                                 "CreationMethod" = "upload"
-                                "FileType" = the file's type as detected by content (magic number) — see 'File type detection (magic number)'
+                                "FileType" = the file's type as detected by content (magic number): "image"/"audio", else the detected MIME type string, else "UNKNOWN" — see 'File type detection (magic number)' and ./note-meta-data.md
                             }
 
                             
@@ -294,9 +294,14 @@ Main page {
                     - Detection must read only the leading bytes of the file (so it stays memory-bounded even for large files).
                 }
 
-                Map the detected MIME type to the app's FileType enum (see ./note-meta-data.md). This mime→FileType mapping is the SINGLE place to extend when adding new supported types later (e.g. video / PDF / MS Office): add a viewer for display and a row to this map, with no other redesign.
+                Record the detected type as the note's "FileType" (see ./note-meta-data.md) as best the magic number allows {
+                    - a MIME starting with image/ \=\> "image"; a MIME starting with audio/ \=\> "audio" (these two are the specially-displayed media types, each with its own in-app viewer).
+                    - any other recognised signature \=\> store the detected MIME type string itself as the FileType (e.g. "application/pdf", "video/mp4").
+                    - no recognised signature at all \=\> "UNKNOWN".
+                }
+                The image/audio mapping is the SINGLE place to extend when adding a new IN-APP VIEWER later (e.g. video / PDF): add a row mapping its MIME to a short FileType and add a matching viewer in the note display area; until then such files keep their raw MIME FileType and are simply not rendered (see the Media viewer's "download to view" behaviour below).
 
-                Everything with a real binary signature is identified by content.
+                Everything with a real binary signature is identified by content; anything else is "UNKNOWN".
             }
 
 
@@ -432,13 +437,16 @@ Main page {
                 Media viewer {
                     should have a vertical and horizontal scrollbar if needed both on PC and mobile.
 
-                    hidden by default, shown when an image or audio file that the user uploaded is selected instead of the text editor
+                    hidden by default, shown when an UPLOADED note (image, audio, or any other uploaded file type) is selected instead of the text editor
 
                     if (it's an image file) {
                         The image should be displayed at its original 100% resolution without being expanded or distorted. If the image is larger than the display area, it should be scrollable, else it should be centered in the display area.
                     }
                     else if (it's an audio file) {
                         display the embedded audio player
+                    }
+                    else {
+                        It is an uploaded file that is neither image nor audio (a detected non-media MIME type, or "UNKNOWN"). Do NOT display the file's contents. Instead just show, centered in the media viewer, the message "Download this note to view".
                     }
                 }
             }

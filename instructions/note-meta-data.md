@@ -1,7 +1,7 @@
 
 The following layout (un-encrypted note entry content) is strictly for actual note entries, i.e. files in the entries folder not settings file, config file, or any other file. The metadata (appProperties) described further below, however, applies to those non-note app files too — see "non-note app file metadata".
 
-each notes data, whether it's a note created by the user (and shown in the rich text area) or a media image or audio file uploded by the user (and shown in the media area), should have it's own metadata. This metadata is NOT embedded in the file contents. Instead it is stored as Google Drive custom file properties on the entry's Drive file itself (using the file properties facility the Google Drive API provides).
+each notes data, whether it's a note created by the user (and shown in the rich text area) or a file uploaded by the user (an image or audio file shown in the media area, or any other file type which is not rendered - see ./UI/main-page.md "Media viewer"), should have it's own metadata. This metadata is NOT embedded in the file contents. Instead it is stored as Google Drive custom file properties on the entry's Drive file itself (using the file properties facility the Google Drive API provides).
 
 So:
 
@@ -11,7 +11,7 @@ un-encrypted note entry content {
             can be one of 
              {
                 1) rich text (note created by user using 'new' option)
-                2) media (image or audio) uploaded by user using 'upload image/audio' option
+                2) any file uploaded by the user using the 'upload' option (an image or audio file, or any other file type)
              }
         }
 
@@ -34,15 +34,19 @@ acceptable metadata keys (each stored as a Google Drive file appProperties key/v
     "DateTimeModified" { [date and time it was last modified in this exact format [date]T[time](e.g. 2026-01-21T10:30)}
     
     "CreationMethod" { "new", "upload", "app" }
-    "FileType" { "richtext", "image", "audio", "config", "settings", "recovery" }
+    "FileType" { "richtext", "image", "audio", "config", "settings", "recovery", a detected MIME type string, "UNKNOWN" }
 
 }
 
-Currently Allowed FileType values { "richtext", "image", "audio", "config", "settings", "recovery" }
+Currently Allowed FileType values {
+    "richtext", "image", "audio", "config", "settings", "recovery"
+    plus, for uploaded files that are neither image nor audio: the file's detected MIME type string (e.g. "application/pdf", "video/mp4") when its magic number is recognised, or "UNKNOWN" when it is not.
+    (See ./UI/main-page.md "File type detection (magic number)" for how an upload's FileType is determined.)
+}
 
 Allowable creationMethod - filetype combinations {
     "new" -> "richtext"
-    "upload" -> "image", "audio"
+    "upload" -> "image", "audio", any other detected MIME type string, or "UNKNOWN"
     "app" -> "config", "settings", "recovery"
 }
 
@@ -50,6 +54,7 @@ Note Display Methods based on FileType {
     "richtext" => Display in rich text editor area
     "image"    => Display in image viewer area
     "audio"    => Display in audio player area
+    any other uploaded type (a detected non-media MIME type, or "UNKNOWN") => do NOT render the contents; show the centered message "Download this note to view" in the media viewer (see ./UI/main-page.md "Media viewer")
     "config", "settings", "recovery" => not user-displayed (these are non-note app files, not note entries)
 }
 
