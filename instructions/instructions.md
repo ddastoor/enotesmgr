@@ -40,6 +40,12 @@ Additional Things to note for:
 
 Test launcher:
     Write a python script that will serve the web app locally on a specific port (e.g. 8000).
+        - This is ./serve.py. It serves ./www (falling back to the project root), defaults to port 8000 (--port to change, --dir to override the served directory), sets the right wasm/js MIME types, and sends "Cross-Origin-Opener-Policy: same-origin-allow-popups" so the Google OAuth popup can talk back to the app. It also sends no-cache headers so edited JS/CSS never get served stale during development.
+        - ./dev.sh is a convenience wrapper for phone testing: it (re)starts serve.py and an ngrok tunnel and prints the public https URL (idempotent - re-run to restart cleanly; set NGROK_DOMAIN for a stable reserved domain).
+
+Deployment (GitHub Pages):
+    The app is the static ./www/ directory; it has no build step and is served as-is.
+    The repository root ./index.html exists only to redirect to ./www/ (canonical link + meta refresh + location.replace, all using a RELATIVE "www/" target so it keeps working under the GitHub Pages project path https://<user>.github.io/enotesmgr/). The redirect preserves any query string and hash. So visiting the repo root lands the user in the actual app under www/.
 
 TODO (don't do till i tell you):
     - see ./todo.md
