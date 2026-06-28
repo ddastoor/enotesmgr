@@ -19,6 +19,9 @@
 // the Drive REST API with that token — so it has zero OAuth surface to be
 // deprecated, and needs no client id, secret, or redirect URI.
 import { cryptoReady, decryptData } from "../../www/js/crypto/crypto.js";
+// The note -> output-file decision (type, filename, html wrapping, byte decoding)
+// is shared with the in-app Download button so the two produce identical output.
+import { buildNoteExport, sanitizeName } from "../../www/js/lib/noteExport.js";
 import {
     mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync,
 } from "node:fs";
@@ -123,33 +126,8 @@ function makeRootDir() {
     return dir;
 }
 
-// --- type + filenames --------------------------------------------------------
-// A note's type comes from its DECRYPTED CONTENT: ANY uploaded file (image,
-// audio, video, PDF, or any other type — including ones the app recorded as
-// "UNKNOWN") is stored as a data: URL carrying its own MIME; everything else is a
-// rich-text HTML note. So a leading "data:" reliably marks an uploaded file in
-// BOTH modes (offline note files have no Drive appProperties, so the content is
-// the only signal). Uploaded files are decoded back to their original bytes;
-// rich-text notes become standalone .html.
-function inferType(content) {
-    return (content || "").trimStart().startsWith("data:") ? "file" : "richtext";
-}
-
-const MIME_EXT = {
-    "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp",
-    "image/svg+xml": "svg", "image/bmp": "bmp",
-    "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg",
-    "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/aac": "aac", "audio/flac": "flac",
-    "video/mp4": "mp4", "video/webm": "webm",
-    "application/pdf": "pdf", "application/zip": "zip",
-    "text/plain": "txt", "application/json": "json",
-};
-
-function sanitizeName(name) {
-    const cleaned = (name || "note").replace(/[\/\\:*?"<>|\u0000-\u001f]/g, "_").trim();
-    return cleaned || "note";
-}
-
+// --- output files ----------------------------------------------------------
+// Avoid overwriting: if `filename` already exists in `dir`, add a " (n)" suffix.
 function uniquePath(dir, filename) {
     let candidate = join(dir, filename);
     if (!existsSync(candidate)) return candidate;
@@ -161,63 +139,13 @@ function uniquePath(dir, filename) {
     }
 }
 
-function dataUrlToBuffer(dataUrl) {
-    const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(dataUrl.trim());
-    if (!m) return null;
-    const mime = m[1] || "application/octet-stream";
-    const buffer = m[2]
-        ? Buffer.from(m[3], "base64")
-        : Buffer.from(decodeURIComponent(m[3]), "utf8");
-    return { buffer, mime };
-}
-
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
-
-// Faithful subset of the app's editor styles (www/css/styles.css), with CSS
-// variables resolved to literals so the file is standalone. Runtime-only
-// decorations (✕ button, selection outline) are intentionally omitted — they
-// are never part of saved note content.
-const EDITOR_CSS = `
-  body { margin: 0; font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1c1b1f; background: #fff; }
-  .editor { padding: 18px 20px; font-size: 16px; line-height: 1.6; }
-  .editor img { max-width: 100%; }
-  .media-embed { position: relative; display: inline-block; margin: 4px; padding: 4px; border: 2px solid #e8ddfb; border-radius: 10px; background: #f0edf7; vertical-align: middle; }
-  .media-embed img { display: block; }
-  audio { display: block; margin: 6px 0; }
-`;
-
-function richTextToHtml(title, contentHtml) {
-    return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${escapeHtml(title)}</title>
-<style>${EDITOR_CSS}</style></head>
-<body><div class="editor">${contentHtml}</div></body></html>`;
-}
-
-// Decrypted `content` -> a file in the output dir. Returns the path written.
+// Decrypted `content` -> a file in the output dir. The type/filename/bytes are
+// decided by the shared buildNoteExport (same logic the app's Download uses).
+// Returns the path written.
 function writeNote(rootDir, noteName, content) {
-    const safe = sanitizeName(noteName);
-    if (inferType(content) === "richtext") {
-        const fname = safe.toLowerCase().endsWith(".html") ? safe : safe + ".html";
-        const out = uniquePath(rootDir, fname);
-        writeFileSync(out, richTextToHtml(noteName, content), "utf8");
-        return out;
-    }
-    // Uploaded file (image / audio / video / PDF / any other type): decode the
-    // data: URL back to its original bytes and write them under the note's name.
-    const decoded = dataUrlToBuffer(content);
-    if (!decoded) { // not a parseable data URL — fall back to dumping raw
-        const out = uniquePath(rootDir, safe);
-        writeFileSync(out, content, "utf8");
-        return out;
-    }
-    let fname = safe;
-    if (!extname(fname)) fname += "." + (MIME_EXT[decoded.mime] || (decoded.mime.split("/")[1] || "bin"));
-    const out = uniquePath(rootDir, fname);
-    writeFileSync(out, decoded.buffer);
+    const { filename, bytes } = buildNoteExport(noteName, content);
+    const out = uniquePath(rootDir, filename);
+    writeFileSync(out, bytes);
     return out;
 }
 

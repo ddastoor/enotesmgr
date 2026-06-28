@@ -7,6 +7,8 @@ Export CLI utility {
 
         How it is built {
             It is a prebuilt artifact assembled from the SAME canonical crypto the app uses, so it never drifts. See src/export/. A build-hash guard fails loudly if the built file is stale.
+
+            The 'Output rules' below (how a decrypted note becomes an output file: its type, filename, html wrapping and byte decoding) are ALSO shared with the app: the in-app 'Download' button (see ./UI/main-page.md) reuses the exact same logic, so a downloaded note and an exported note are byte-for-byte identical. The build-hash guard covers this shared module too.
         }
     }
 

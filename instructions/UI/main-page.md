@@ -194,6 +194,27 @@ Main page {
                     }
                 }
 
+                Download button {
+                    label: "↓D" (a down-arrow character "↓" followed by "D"). Position: immediately to the right of the Upload button.
+                    tooltip: "Download"
+                    disabled if {
+                        no note is currently selected (the dummy "" entry)
+                    }
+                    on click {
+                        Download the currently loaded note to the user's device in UNENCRYPTED form, re-using the export utility's output logic so the downloaded file is identical to what that utility would write \(see ../../export-cli.md "Output rules"\) {
+                            Obtain the note's decrypted content {
+                                if (it is a rich text note) { use the current on-screen rich text editor content (so any unsaved edits are included). }
+                                else (it is an uploaded file - image, audio, or any other type) { re-fetch the note file from the entries folder and decrypt it with the file password to get its content (a data: URL). }
+                            }
+                            if (it is a rich text note) {
+                                Download a standalone '<note-name>.html' that renders the note exactly how the editor displayed it (the same html the export utility produces).
+                            } else {
+                                Download the decoded original bytes under the note's own name (keeping its extension, or deriving one from the data: URL's MIME type when the name has none). This applies to ALL uploaded file types, not just media.
+                            }
+                        }
+                    }
+                }
+
                 Save button {
                     label: "Save"
                     tooltip: "Save the current note"

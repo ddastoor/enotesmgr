@@ -13,6 +13,7 @@ import { encryptData, decryptData } from "../crypto/crypto.js";
 import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal } from "../lib/dialogs.js";
 import { nowStamp } from "../lib/meta.js";
 import { detectFileType } from "../lib/fileType.js";
+import { buildNoteExport } from "../lib/noteExport.js";
 import { showNoteSearch } from "../lib/searchDialog.js";
 import { openMenu } from "./menu.js";
 
@@ -139,6 +140,7 @@ export function render(container) {
                 <button id="tb-refresh" class="btn btn-tonal" title="Refresh the current note" aria-label="Refresh">↻</button>
                 <button id="tb-new" class="btn btn-tonal" title="Create a new note">New</button>
                 <button id="tb-upload" class="btn btn-tonal" title="Upload">↑U</button>
+                <button id="tb-download" class="btn btn-tonal" title="Download">↓D</button>
                 <button id="tb-save" class="btn btn-filled" title="Save the current note">Save</button>
                 <button id="tb-rename" class="btn btn-tonal" title="Rename the current note">Rename</button>
                 <button id="tb-delete" class="btn btn-danger" title="Delete the current note">Delete</button>
@@ -179,6 +181,7 @@ export function render(container) {
     container.querySelector("#tb-new").addEventListener("click", onNew);
     container.querySelector("#tb-upload").addEventListener("click", () =>
         container.querySelector("#hidden-upload").click());
+    container.querySelector("#tb-download").addEventListener("click", onDownload);
     container.querySelector("#tb-save").addEventListener("click", onSave);
     container.querySelector("#tb-rename").addEventListener("click", onRename);
     container.querySelector("#tb-delete").addEventListener("click", onDelete);
@@ -565,6 +568,43 @@ async function onUploadFile(e) {
     }
 }
 
+// Download the currently loaded note in UNENCRYPTED form. Reuses the export
+// utility's logic (buildNoteExport) so the file is byte-for-byte what the CLI
+// would write: a rich-text note becomes a standalone .html, an uploaded file is
+// decoded back to its original bytes under its own name.
+async function onDownload() {
+    if (!current) return;
+    try {
+        // Get the note's decrypted content. Rich text comes from the editor (so
+        // any on-screen edits are included); an uploaded file (image/audio/other)
+        // can't be edited, so re-fetch + decrypt its stored data: URL.
+        let content;
+        if (isMediaType(current.meta)) {
+            content = await withStatus("Preparing download...", async () =>
+                decryptData(await downloadText(current.id), filePassword()));
+        } else {
+            content = readEditorContent();
+        }
+        const { filename, bytes, mime } = buildNoteExport(current.name, content);
+        downloadBlob(filename, new Blob([bytes], { type: mime }));
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not download this note.", "Error");
+    }
+}
+
+// Trigger a browser download of `blob` as `filename`.
+function downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function onRename() {
     if (!current) return;
     const name = await showPrompt("Enter a new name for this note:", {
@@ -881,6 +921,8 @@ function updateButtons() {
     document.getElementById("tb-refresh").disabled = isDummy;
     document.getElementById("tb-rename").disabled = isDummy;
     document.getElementById("tb-delete").disabled = isDummy;
+    // Download is available for any loaded note (richtext or uploaded file).
+    document.getElementById("tb-download").disabled = isDummy;
     // Save disabled for the dummy entry and for uploaded media files.
     document.getElementById("tb-save").disabled = isDummy || isMedia;
 }
