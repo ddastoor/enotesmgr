@@ -22,7 +22,7 @@ When a new user logs in:
     - see ./new-user-login.md   
 
 When existing user logs in:
-    - see ./existing-user-login.md
+    - he is asked for his master password - see ./UI/master-password-popup.md
 
 
 

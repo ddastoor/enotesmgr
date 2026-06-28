@@ -54,6 +54,18 @@
                         }
                     }
 
+                    <!-- wipe all app data (PC only - destructive) -->
+                    {
+                        menu item: "Wipe all App Data" {
+                            PC only - this item is NOT shown on mobile \(it is a destructive desktop action\). A non-clickable section label "Danger Zone (PC only)" precedes it, and the item is styled as a danger/destructive item.
+                            tooltip: "Permanently delete the eNotes Manager folder and all its contents from Google Drive"
+                            on click {
+                                Dismiss the menu pane
+                                Run the wipe-all-app-data flow \(see ./menu/menu-items/wipe-app-data.md\).
+                            }
+                        }
+                    }
+
 
 
 
