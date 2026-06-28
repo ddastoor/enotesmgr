@@ -54,12 +54,24 @@ export async function generateRecoveryCodes() {
     return codes.map((c) => c.code);
 }
 
+// Filename of the downloaded recovery codes file, e.g.
+// EnotesMgrRecoveryCodes__abc__2026-01-21.txt — tagged with the google username
+// and the download date so multiple downloads don't clash / overwrite.
+function recoveryCodesFilename() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    // Keep the username filesystem-safe; fall back to "user" if unknown.
+    const user = (state.username || "user").replace(/[^A-Za-z0-9._-]/g, "_");
+    return `EnotesMgrRecoveryCodes__${user}__${date}.txt`;
+}
+
 function downloadCodes(codes) {
     const blob = new Blob([codes.join("\n") + "\n"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "enotes_recovery_codes.txt";
+    a.download = recoveryCodesFilename();
     document.body.appendChild(a);
     a.click();
     a.remove();

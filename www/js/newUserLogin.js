@@ -34,7 +34,7 @@ export async function runNewUserLogin(masterPassword, generateRecovery) {
     if (generateRecovery) {
         await withStatus("Generating recovery codes...", () => generateRecoveryCodes());
         await showAlert(
-            "enotes_recovery_codes.txt has been downloaded to your device. Save it very safely!",
+            "Your recovery codes file (EnotesMgrRecoveryCodes__...txt) has been downloaded to your device. Save it very safely!",
             "Recovery codes downloaded"
         );
     }

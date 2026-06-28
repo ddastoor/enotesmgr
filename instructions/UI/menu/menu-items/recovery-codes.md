@@ -27,7 +27,7 @@
                         Save this encrypted file into the recovery folder.
                     }
 
-                    Download the 10 recovery codes listed line by line in 'enotes_recovery_codes.txt' to the user's device and inform the user via a popup with message 'Recovery codes downloaded. Save them very safely!'
+                    Download the 10 recovery codes listed line by line to the user's device, into a file named 'EnotesMgrRecoveryCodes__<username>__<YYYY-MM-DD>.txt' (the username is the local part of the user's google email, see ../../main-page.md "Username display" - and the date is the day of download; both tag the file so repeated downloads don't clash). Inform the user via a popup with message 'Recovery codes downloaded. Save them very safely!'
                     Delete the 'one-or-no-recovery-files-left-dont-ask-marker-file' from the recovery folder if it exists.
 
                 }
