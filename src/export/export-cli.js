@@ -1,8 +1,9 @@
-// mynotes-export — entry source for the self-contained Node export CLI.
+// enotesmgr-export-cli — entry source for the self-contained Node export CLI.
 //
 // build.mjs bundles this (+ the canonical www/ crypto + the WASI shim) and
-// inlines the base64 wasm into a single www/mynotes-export.js that runs with
-// `node mynotes-export.js` and needs NO npm install (only Node 18+ built-ins).
+// inlines the base64 wasm into a single www/enotesmgr-export-cli.js that runs
+// with `node enotesmgr-export-cli.js` and needs NO npm install (only Node 18+
+// built-ins).
 //
 // It decrypts the user's eNotes notes and dumps them to a fresh output dir, in
 // two modes:
@@ -62,11 +63,11 @@ function usageExit(msg) {
     if (msg) console.error("Error: " + msg + "\n");
     console.error(
         "Usage:\n" +
-        "  Online:  node mynotes-export.js -m on  [-t <export-token>] [-x]\n" +
+        "  Online:  node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]\n" +
         "           (get the token from the app menu: 'Copy Export Token')\n" +
         "           (-x: download the whole 'eNotes Manager' Drive folder as a\n" +
         "            dated, still-encrypted LOCAL backup, then exit)\n" +
-        "  Offline: node mynotes-export.js -m off   (interactive wizard; optionally\n" +
+        "  Offline: node enotesmgr-export-cli.js -m off   (interactive wizard; optionally\n" +
         "           pre-fill with -c <config.json> and -n <note-file> | -d <notes-dir>)\n"
     );
     process.exit(1);
@@ -121,7 +122,7 @@ function stamp() {
     return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
 function makeRootDir() {
-    const dir = `my-notes-export_${stamp()}`;
+    const dir = `eNotes Manager Export_${stamp()}`;
     mkdirSync(dir, { recursive: true });
     return dir;
 }

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Builds the self-contained Node export CLI (www/mynotes-export.js) by bundling the canonical www/ crypto + WASI shim and inlining the base64 wasm. No CDN, no runtime build step, no npm install for the end user.",
+  "description": "Builds the self-contained Node export CLI (www/enotesmgr-export-cli.js) by bundling the canonical www/ crypto + WASI shim and inlining the base64 wasm. No CDN, no runtime build step, no npm install for the end user.",
   "scripts": {
     "build": "node build.mjs",
     "verify": "node verify.mjs"

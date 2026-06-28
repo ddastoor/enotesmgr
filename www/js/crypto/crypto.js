@@ -5,7 +5,7 @@ const wasi = new WASI([], [], [new OpenFile(new File([])), new ConsoleStdout(), 
 let wasmInstance = null;
 
 async function initWasm() {
-    // Self-contained builds (the Node export CLI, mynotes-export.js) inline the
+    // Self-contained builds (the Node export CLI, enotesmgr-export-cli.js) inline the
     // wasm as base64 on this global, since there is no server to fetch() from.
     // When the global is absent (the normal online app) we fetch as before — so
     // the online browser code path is completely unchanged.

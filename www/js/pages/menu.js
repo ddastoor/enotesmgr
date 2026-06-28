@@ -7,12 +7,12 @@ import { wipeAppData } from "../wipeAppData.js";
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
 // Download the prebuilt Node export CLI. It's a static same-origin file
-// (www/mynotes-export.js); a download anchor saves it without loading it into
-// JS memory. PC only (it's a command-line tool — see ../../instructions).
+// (www/enotesmgr-export-cli.js); a download anchor saves it without loading it
+// into JS memory. PC only (it's a command-line tool — see ../../instructions).
 function downloadExportUtility() {
     const a = document.createElement("a");
-    a.href = "mynotes-export.js";
-    a.download = "mynotes-export.js";
+    a.href = "enotesmgr-export-cli.js";
+    a.download = "enotesmgr-export-cli.js";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -32,8 +32,8 @@ async function copyExportToken() {
     try { await navigator.clipboard.writeText(token); copied = true; } catch { /* clipboard blocked */ }
     await showAlert(
         copied
-            ? "Export token copied to the clipboard.\n\nIn a terminal run:\n  node mynotes-export.js -m on\n\nand paste the token when prompted. It is valid for about 1 hour."
-            : "Copy this export token and paste it into the CLI ('node mynotes-export.js -m on') when prompted:\n\n" + token,
+            ? "Export token copied to the clipboard.\n\nIn a terminal run:\n  node enotesmgr-export-cli.js -m on\n\nand paste the token when prompted. It is valid for about 1 hour."
+            : "Copy this export token and paste it into the CLI ('node enotesmgr-export-cli.js -m on') when prompted:\n\n" + token,
         "Export token"
     );
 }
@@ -48,7 +48,7 @@ export function openMenu() {
     const exportItem = isMobile() ? "" : `
                 <li class="drawer-section">Tools (PC only)</li>
                 <li>
-                    <button class="drawer-item" data-action="dl-export" title="Download the command-line export utility (mynotes-export.js)">
+                    <button class="drawer-item" data-action="dl-export" title="Download the command-line export utility (enotesmgr-export-cli.js)">
                         Download Export Utility
                     </button>
                 </li>

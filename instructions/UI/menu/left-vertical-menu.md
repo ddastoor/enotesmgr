@@ -35,10 +35,10 @@
                     {
                         menu item: "Download Export Utility" {
                             PC only - this item is NOT shown on mobile \(it is a desktop command-line tool\). A non-clickable section label "Tools (PC only)" precedes it.
-                            tooltip: "Download the command-line export utility (mynotes-export.js)"
+                            tooltip: "Download the command-line export utility (enotesmgr-export-cli.js)"
                             on click {
                                 Dismiss the menu pane
-                                Download the prebuilt self-contained 'mynotes-export.js' tool to the user's device. See ../../export-cli.md.
+                                Download the prebuilt self-contained 'enotesmgr-export-cli.js' tool to the user's device. See ../../export-cli.md.
                             }
                         }
                     }
@@ -49,7 +49,7 @@
                             on click {
                                 Dismiss the menu pane
                                 If there is no active session token, inform the user to log in again and stop.
-                                Otherwise copy the app's current Google Drive access token to the clipboard \(if the clipboard is unavailable, show the token so it can be copied manually\), and tell the user to paste it into the export utility's online mode \(node mynotes-export.js -m on\). The token is valid for about an hour. This is the 'token hand-off' that lets the CLI access Drive without doing its own OAuth - see ../../export-cli.md.
+                                Otherwise copy the app's current Google Drive access token to the clipboard \(if the clipboard is unavailable, show the token so it can be copied manually\), and tell the user to paste it into the export utility's online mode \(node enotesmgr-export-cli.js -m on\). The token is valid for about an hour. This is the 'token hand-off' that lets the CLI access Drive without doing its own OAuth - see ../../export-cli.md.
                             }
                         }
                     }

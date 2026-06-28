@@ -1,5 +1,5 @@
 // Single source of truth for the export CLI's "input hash". build.mjs embeds it
-// in www/mynotes-export.js; verify.mjs recomputes it from the SAME sources and
+// in www/enotesmgr-export-cli.js; verify.mjs recomputes it from the SAME sources and
 // fails if they differ — so the shared crypto / CLI logic can't change without
 // the built artifact being rebuilt (no silent drift).
 import { readFileSync } from "node:fs";
@@ -23,4 +23,4 @@ export function computeHash() {
     return h.digest("hex");
 }
 
-export const OUTPUT = resolve(here, "../../www/mynotes-export.js");
+export const OUTPUT = resolve(here, "../../www/enotesmgr-export-cli.js");

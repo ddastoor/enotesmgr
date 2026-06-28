@@ -1,11 +1,11 @@
-// Build www/mynotes-export.js: a single self-contained Node CLI.
+// Build www/enotesmgr-export-cli.js: a single self-contained Node CLI.
 //
 //   node build.mjs   (or: npm run build)
 //
 // Bundles export-cli.js (+ the canonical www/ crypto + WASI shim) to one CJS
 // file via esbuild, and prepends a banner that (a) makes it executable, (b)
 // inlines the base64 wasm on a global the crypto reads at init, and (c) records
-// the input hash for the drift guard. Runs with `node mynotes-export.js` on
+// the input hash for the drift guard. Runs with `node enotesmgr-export-cli.js` on
 // Node 18+ with no npm install.
 import { build } from "esbuild";
 import { readFileSync, writeFileSync } from "node:fs";

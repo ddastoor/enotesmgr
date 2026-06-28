@@ -3,7 +3,7 @@
 Export CLI utility {
 
     Purpose {
-        A single, self-contained, user-interactive Node command-line tool - 'mynotes-export.js' - that bulk-decrypts the user's notes and dumps them to local files. It runs with `node mynotes-export.js` on Node 18+ and needs NO npm install: it embeds everything it needs, including the wasm crypto module \(inlined as base64\). Don't bother about recovery codes.
+        A single, self-contained, user-interactive Node command-line tool - 'enotesmgr-export-cli.js' - that bulk-decrypts the user's notes and dumps them to local files. It runs with `node enotesmgr-export-cli.js` on Node 18+ and needs NO npm install: it embeds everything it needs, including the wasm crypto module \(inlined as base64\). Don't bother about recovery codes.
 
         How it is built {
             It is a prebuilt artifact assembled from the SAME canonical crypto the app uses, so it never drifts. See src/export/. A build-hash guard fails loudly if the built file is stale.
@@ -13,7 +13,7 @@ Export CLI utility {
     }
 
     Output directory {
-        For the decrypted-export operations \(online without -x, and offline\), the tool creates a timestamped directory named 'my-notes-export_<YYYYMMDD_HHMM>' in the current directory and writes all exported notes there.
+        For the decrypted-export operations \(online without -x, and offline\), the tool creates a timestamped directory named 'eNotes Manager Export_<YYYYMMDD_HHMM>' in the current directory and writes all exported notes there.
         \(The online -x mode does NOT use this directory; it creates its own 'eNotes Manager_<YYYYMMDD_HHMM>' directory - see its description below.\)
     }
 
@@ -29,7 +29,7 @@ Export CLI utility {
             }
 
             if (the -x flag is given) {
-                Do NOT ask for the master password \(no decryption happens\) and do NOT use the normal 'my-notes-export_...' output directory.
+                Do NOT ask for the master password \(no decryption happens\) and do NOT use the normal 'eNotes Manager Export_...' output directory.
                 After obtaining the token, download the user's ENTIRE 'eNotes Manager' folder tree from Google Drive onto the LOCAL device, AS IS \(every subfolder and file mirrored locally, each file written still-encrypted exactly as stored\), into a new local directory named 'eNotes Manager_<YYYYMMDD_HHMM>'. Then exit.
             } else {
                 Ask for the master password from the CLI \(hidden input\).
@@ -42,7 +42,7 @@ Export CLI utility {
         offline \(-m off\) {
             No google oauth takes place here.
 
-            This mode is an INTERACTIVE WIZARD. The user can just run 'node mynotes-export.js -m off' and be prompted for everything, in this order {
+            This mode is an INTERACTIVE WIZARD. The user can just run 'node enotesmgr-export-cli.js -m off' and be prompted for everything, in this order {
                 1. Path to config.json \(the encrypted config file\).
                 2. Whether to export a single note file or a whole directory of note files \(default: directory\).
                 3. The path to that single file, or to that directory.
