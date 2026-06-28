@@ -14,10 +14,11 @@ Keyboard shortcuts help popup {
             "N"                ->  "New note"
             "U"                ->  "Upload a file"
             "R"                ->  "Rename the current note"
-            "D"                ->  "Delete the current note"
+            "D"                ->  "Download the current note"
+            "X"                ->  "Delete the current note"
             "S"                ->  "Open Settings"
             "M"                ->  "Open the More options menu"
-            "X  or  Q"         ->  "Log out"
+            "Q"                ->  "Log out"
             "?"                ->  "Show this keyboard shortcuts help"
             "Esc"              ->  "Move focus back to the page"
     }

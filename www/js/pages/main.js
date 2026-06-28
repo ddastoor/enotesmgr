@@ -314,10 +314,11 @@ function onGlobalKeydown(e) {
         case "n": case "N": e.preventDefault(); clickToolbar("tb-new"); break;
         case "u": case "U": e.preventDefault(); clickToolbar("tb-upload"); break;
         case "r": case "R": e.preventDefault(); clickToolbar("tb-rename"); break;
-        case "d": case "D": e.preventDefault(); clickToolbar("tb-delete"); break;
+        case "d": case "D": e.preventDefault(); clickToolbar("tb-download"); break;
         case "s": case "S": e.preventDefault(); clickToolbar("btn-settings"); break;
         case "m": case "M": e.preventDefault(); clickToolbar("btn-more"); break;
-        case "x": case "X": case "q": case "Q": e.preventDefault(); clickToolbar("btn-logout"); break;
+        case "x": case "X": e.preventDefault(); clickToolbar("tb-delete"); break;
+        case "q": case "Q": e.preventDefault(); clickToolbar("btn-logout"); break;
     }
 }
 
@@ -329,10 +330,11 @@ function showShortcutsHelp() {
         ["N", "New note"],
         ["U", "Upload a file"],
         ["R", "Rename the current note"],
-        ["D", "Delete the current note"],
+        ["D", "Download the current note"],
+        ["X", "Delete the current note"],
         ["S", "Open Settings"],
         ["M", "Open the More options menu"],
-        ["X &nbsp;or&nbsp; Q", "Log out"],
+        ["Q", "Log out"],
         ["?", "Show this keyboard shortcuts help"],
         ["Esc", "Move focus back to the page"],
     ];

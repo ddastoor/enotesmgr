@@ -47,7 +47,7 @@ Main page keyboard shortcuts {
 
         'D' {
             focus condition: not in the rich text area.
-            action: like pressing the Delete button.
+            action: like pressing the Download button (download the current note).
         }
 
         'S' {
@@ -61,7 +61,12 @@ Main page keyboard shortcuts {
         }
 
 
-        'X' or 'Q' {
+        'X' {
+            focus condition: not in the rich text area.
+            action: like pressing the Delete button.
+        }
+
+        'Q' {
             focus condition: not in the rich text area.
             action: like pressing the Logout button.
         }
