@@ -128,7 +128,14 @@ export function showNoteSearch(names) {
         cancelBtn.addEventListener("click", () => finish(null));
         backdrop.addEventListener("click", (e) => { if (e.target === backdrop) finish(null); });
 
-        function onEsc(e) { if (e.key === "Escape") finish(null); }
+        function onEsc(e) {
+            // Removed without an answer (logout closes open popups): just detach.
+            if (!backdrop.isConnected) {
+                document.removeEventListener("keydown", onEsc);
+                return;
+            }
+            if (e.key === "Escape") finish(null);
+        }
         document.addEventListener("keydown", onEsc);
 
         backdrop.appendChild(modal);

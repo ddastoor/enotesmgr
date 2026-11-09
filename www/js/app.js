@@ -65,6 +65,12 @@ export function logout() {
     stopSessionTimer();
     resetState();
     clearFileIdCache();
+    // Close any open popup / menu drawer. They live in #overlay-root, which page
+    // navigation doesn't touch, so after an auto-logout e.g. the search popup
+    // (listing note names) would otherwise stay on screen over the login page.
+    // (The status spinner is kept: it is reused, and navigate() hides it.)
+    document.querySelectorAll("#overlay-root > .modal-backdrop, #overlay-root > .drawer-backdrop")
+        .forEach((el) => el.remove());
     try {
         localStorage.clear();
         sessionStorage.clear();

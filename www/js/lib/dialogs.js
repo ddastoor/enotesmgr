@@ -79,6 +79,13 @@ export function buildModal({ title, body, buttons }) {
         });
 
         function onKey(e) {
+            // Popup removed without being answered (logout closes open popups):
+            // drop this listener and never resolve, so a later Escape can't
+            // trigger the old popup's cancel action.
+            if (!backdrop.isConnected) {
+                document.removeEventListener("keydown", onKey);
+                return;
+            }
             if (e.key === "Escape") {
                 const cancelBtn = buttons.find((x) => x.isCancel);
                 if (cancelBtn) close(cancelBtn.value);
