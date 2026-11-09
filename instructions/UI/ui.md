@@ -1,5 +1,7 @@
 
 General Web SPA UI Style instructions {
+    Browser tab title: the page title shown in the browser tab is "eNotesMgr" (www/index.html, and the repo-root redirect page index.html). The in-page brand headings stay "eNotes".
+
     Whatever UI changes you make for this SPA project, make sure it always looks stylih and modern according to modern UI standards and also fits nicely and look nice on my phone's browser screen. Use google's Material 3 Expressive Design as for the UI design.
 
     Use different pastel colors for UI elements and avoid using too much of black and white for UI elements like buttons, etc, but don't have a general colored theme.

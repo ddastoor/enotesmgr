@@ -10,8 +10,14 @@ const { pathToFileURL } = require("url");
 (async () => {
     const browser = await chromium.launch();
 
-    console.log("1. New user setup with recovery codes");
+    console.log("0. Browser tab title");
     let page = await newPage(browser);
+    ok(await page.title() === "eNotesMgr", `app tab title is "eNotesMgr" (got "${await page.title()}")`);
+    const rootHtml = fs.readFileSync(path.join(__dirname, "..", "..", "index.html"), "utf8");
+    ok(/<title>eNotesMgr<\/title>/.test(rootHtml), 'repo-root redirect page title is "eNotesMgr"');
+    ok((await page.textContent(".brand-title")).trim() === "eNotes", 'in-page brand heading is still "eNotes"');
+
+    console.log("1. New user setup with recovery codes");
     await login(page);
     await page.fill("#su-pwd", "Master123");
     await page.fill("#su-pwd2", "Master123");
