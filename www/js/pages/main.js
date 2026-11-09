@@ -385,7 +385,27 @@ async function refreshEntries(selectedName = "") {
 }
 
 async function onSelectChange(e) {
-    const name = e.target.value;
+    const sel = e.target;
+    const name = sel.value;
+    // Switching away from a rich text note with unsaved changes: offer to save
+    // first (same prompt as New / Upload). The dropdown already shows the new
+    // pick, so on Cancel - or if the save fails - put it back and stay on the
+    // current note with its edits intact. Search selections come through here too.
+    if (current) {
+        let proceed;
+        try {
+            proceed = await maybeSaveBeforeSwitch();
+        } catch (err) {
+            console.error(err);
+            sel.value = current.name;
+            await showAlert("Could not save this note.", "Error");
+            return;
+        }
+        if (!proceed) {
+            sel.value = current.name;
+            return;
+        }
+    }
     if (!name) {
         current = null;
         showEditor("");

@@ -89,7 +89,15 @@ Main page {
                     Lists all note entries from entries folder , sorted alphabetically.
                     Always keep this list sorted alphabetically even when notes are added or removed.
                     The first entry of the list ahould be a dummy entry "" that displays by default
-                    On file selection { trigger load the note functionality }
+                    On file selection {
+                        If (an existing note is already loaded \(i.e., file selector was not showing dummy entry ""\) ) {
+                            If (the creationmethod field is "new" \(and not "upload"\) and the current rich text editor contents are not saved) {
+                                Ask the user if he wants to save the current note or not (the same Yes / No / Cancel prompt as for the 'New' and 'Upload' buttons). If he says yes, save the current note. If he says no, do not save the current note.
+                                If he cancels (or the save fails), put the file selector back on the current note and stay on it, keeping the unsaved edits.
+                            }
+                        }
+                        trigger load the note functionality
+                    }
                 }
 
                 Search button {
