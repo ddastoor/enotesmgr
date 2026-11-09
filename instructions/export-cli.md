@@ -24,7 +24,7 @@ Export CLI utility {
             Note: both scopes keep the notes app-private - drive.appdata confines them to the hidden Application Data folder, and drive.file restricts visibility to files created by the same OAuth client; either way the SPA's token sees exactly the right notes. The CLI must search the matching space \(appDataFolder vs drive\), which it selects via its own STORAGE_MODE switch kept in sync with the app.
 
             Necessary and sufficient command-line arguments {
-                -t \(optional\) : the export token. If omitted, the tool prompts the user to paste it.
+                -t \(optional\) : the export token. If omitted, the tool prompts the user to paste it \(hidden input, like the master password, so the token isn't left on screen\).
                 -x \(optional, flag\) : replicate-the-whole-tree mode \(see below\).
             }
 
@@ -73,5 +73,8 @@ Export CLI utility {
         }
 
         Filenames are made filesystem-safe, and on a name collision within the output directory a numeric suffix \(e.g. " (1)"\) is added so nothing is overwritten.
+
+        Everything the tool writes is private to the current user: directories are created with mode 0700 and files with mode 0600 \(ignored on Windows\).
+        In the -x mirror, a Drive name of exactly "." or ".." is written as "_." / "_.." so nothing can ever be written outside the mirror directory.
     }
 }

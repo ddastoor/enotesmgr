@@ -116,6 +116,12 @@ async function promptHidden(query) {
 }
 
 // --- output dir --------------------------------------------------------------
+// Everything the CLI writes is private to the current user: folders 0700, files
+// 0600 (decrypted notes would otherwise be readable by other users on the same
+// machine under a typical 022 umask). Windows ignores these modes.
+const DIR_MODE = 0o700;
+const FILE_MODE = 0o600;
+
 const pad = (n) => String(n).padStart(2, "0");
 function stamp() {
     const d = new Date();
@@ -123,7 +129,7 @@ function stamp() {
 }
 function makeRootDir() {
     const dir = `eNotes Manager Export_${stamp()}`;
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: DIR_MODE });
     return dir;
 }
 
@@ -146,7 +152,7 @@ function uniquePath(dir, filename) {
 function writeNote(rootDir, noteName, content) {
     const { filename, bytes } = buildNoteExport(noteName, content);
     const out = uniquePath(rootDir, filename);
-    writeFileSync(out, bytes);
+    writeFileSync(out, bytes, { mode: FILE_MODE });
     return out;
 }
 
@@ -188,14 +194,22 @@ const FOLDER_MIME = "application/vnd.google-apps.folder";
 // Recursively mirror a Drive folder subtree onto the LOCAL filesystem under
 // `destDir`, downloading each file AS-IS (its stored encrypted ciphertext, not
 // decrypted) and recreating subfolders. Returns the number of files written.
+// A Drive name used as a local path component. sanitizeName strips slashes, but
+// a name of exactly "." or ".." would still point at the current / PARENT
+// folder and let the mirror write outside its destination, so prefix those.
+function localName(name) {
+    const safe = sanitizeName(name);
+    return safe === "." || safe === ".." ? "_" + safe : safe;
+}
+
 async function replicateTreeLocal(srcId, destDir, token) {
-    mkdirSync(destDir, { recursive: true });
+    mkdirSync(destDir, { recursive: true, mode: DIR_MODE });
     let count = 0;
     for (const c of await listChildren(srcId, token)) {
         if (c.mimeType === FOLDER_MIME) {
-            count += await replicateTreeLocal(c.id, join(destDir, sanitizeName(c.name)), token);
+            count += await replicateTreeLocal(c.id, join(destDir, localName(c.name)), token);
         } else {
-            writeFileSync(join(destDir, sanitizeName(c.name)), await downloadText(c.id, token), "utf8");
+            writeFileSync(join(destDir, localName(c.name)), await downloadText(c.id, token), { encoding: "utf8", mode: FILE_MODE });
             count++;
         }
     }
@@ -206,8 +220,10 @@ async function replicateTreeLocal(srcId, destDir, token) {
 async function runOnline(args) {
     // Token hand-off: the app's "Copy Export Token" menu gives a live Drive
     // access token; we use it directly (no OAuth in the CLI).
-    const token = args.t || await promptVisible(
-        "Paste your export token (from the app menu 'Copy Export Token'): ");
+    // Hidden input, like the master password: the token gives ~1 hour of access
+    // to your encrypted app data, so don't leave it on screen / in scrollback.
+    const token = args.t || (await promptHidden(
+        "Paste your export token (from the app menu 'Copy Export Token') (hidden): ")).trim();
     if (!token) usageExit("online mode needs an export token (paste it, or pass -t <token>).");
 
     // -x: replicate the whole 'eNotes Manager' tree (still encrypted) on Drive,
