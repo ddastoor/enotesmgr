@@ -212,13 +212,3 @@ export function decryptData(base64Text, password) {
 
     return plainText;
 }
-
-// SHA-256 hex digest of a string, using the browser's Web Crypto (unrelated to
-// the symmetric crypto above). Used to name recovery files.
-export async function sha256Hex(str) {
-    const data = utf8Encode(str);
-    const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(hashBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-}

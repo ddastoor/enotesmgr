@@ -12,7 +12,7 @@ mapping of what i say to what i mean {
     'recovery folder' => { 'eNotes Manager' / Recovery folder structure in the user's google drive }
     
     'one-or-no-recovery-files-left-dont-ask-marker-file' => { an empty dummy marker file (not encrypted of course) in the recovery folder to indicate that the user has 1 or 0 recovery files left but doesn't want to be asked again to generate more }
-    'recovery file' => { one of the potentially many encrypted files in the recovery folder (not counting 'one-or-no-recovery-files-left-dont-ask-marker-file'). Its name is the sha256 hash of the recovery code it corresponds to. }
+    'recovery file' => { one of the potentially many encrypted files in the recovery folder (not counting 'one-or-no-recovery-files-left-dont-ask-marker-file'). Its name is random (e.g. 'recovery-<uuid>') and is NEVER derived from the recovery code (no hash, no mapping, no index) - see ./UI/menu/menu-items/recovery-codes.md 'Recovery file naming'. The recovery file a code corresponds to is the one that code successfully decrypts. }
     'recovery file count' or 'recovery files count' or 'recovery codes count' => { the number of 'recovery file's in the recovery folder not counting the marker file 'one-or-no-recovery-files-left-dont-ask-marker-file' }
 
     'recovery json' => { the decrypted 'recovery file' json. }

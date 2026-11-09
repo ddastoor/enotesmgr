@@ -174,7 +174,14 @@ async function handleMasterPassword(masterPassword, err) {
 
 async function handleRecoveryCode(code, err) {
     // Are there any recovery files at all?
-    const recoveryFiles = await withStatus("Checking...", () => listRecoveryFiles());
+    let recoveryFiles;
+    try {
+        recoveryFiles = await withStatus("Checking...", () => listRecoveryFiles());
+    } catch (e) {
+        console.error(e);
+        err.textContent = "Something went wrong. Please try again.";
+        return;
+    }
     if (recoveryFiles.length === 0) {
         await showAlert(
             "Sorry, you're out of luck - you don't have any recovery codes left. Try your best to remember your master password!!",
@@ -184,20 +191,21 @@ async function handleRecoveryCode(code, err) {
         return;
     }
 
-    const recoveryFile = await findRecoveryFile(code);
-    if (!recoveryFile) {
-        err.textContent = "Invalid recovery code";
-        return;
-    }
-
-    let recoveryJson;
+    // Try the code against each recovery file (slow Argon2id decryption, by
+    // design - see recovery.js). None decrypting = wrong or already-used code.
+    let found;
     try {
-        const cipher = await withStatus("Verifying...", () => downloadText(recoveryFile.id));
-        recoveryJson = JSON.parse(decryptData(cipher, code));
-    } catch (_) {
+        found = await withStatus("Verifying...", () => findRecoveryFile(code, recoveryFiles));
+    } catch (e) {
+        console.error(e);
+        err.textContent = "Something went wrong. Please try again.";
+        return;
+    }
+    if (!found) {
         err.textContent = "Invalid recovery code";
         return;
     }
+    const { file: recoveryFile, recoveryJson } = found;
 
     // Code valid: ask user for a new master password. The reset page installs
     // its own exit guards, so release ours while it is shown.
@@ -208,6 +216,8 @@ async function handleRecoveryCode(code, err) {
         return;
     }
 
+    // 1) Reset the master password. The code is NOT used up yet, so if this
+    //    fails the user can simply try again with the same code.
     try {
         await withStatus("Resetting master password...", async () => {
             state.configJson = recoveryJson;
@@ -215,15 +225,6 @@ async function handleRecoveryCode(code, err) {
             // before overwriting config.json, so a bad write can't lock the user out.
             const configFile = encryptVerified(JSON.stringify(state.configJson), newMaster);
             await upsertTextFile(CONFIG_FILE_NAME, configFile, state.folders.config, appMetaProps("config"));
-
-            // Decrypt settings with the file password to reflect them.
-            const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
-            if (settingsMeta) {
-                const settingsCipher = await downloadText(settingsMeta.id);
-                state.settingsJson = JSON.parse(decryptData(settingsCipher, recoveryJson.file_password));
-            }
-
-            await deleteFile(recoveryFile.id);
         });
     } catch (e) {
         console.error(e);
@@ -233,8 +234,31 @@ async function handleRecoveryCode(code, err) {
         return;
     }
 
+    // 2) The password is reset: exhaust the code by deleting its recovery file.
+    //    Reflect the settings too (non-fatal: the session ends right after).
+    let exhausted = true;
+    await withStatus("Finishing...", async () => {
+        try {
+            await deleteFile(recoveryFile.id);
+        } catch (e) {
+            console.error("Failed to exhaust recovery code", e);
+            exhausted = false;
+        }
+        try {
+            const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
+            if (settingsMeta) {
+                const settingsCipher = await downloadText(settingsMeta.id);
+                state.settingsJson = JSON.parse(decryptData(settingsCipher, recoveryJson.file_password));
+            }
+        } catch (e) {
+            console.error("Failed to load settings", e);
+        }
+    });
+
     await showAlert(
-        "Recovery code used successfully and exhausted. Your master password has been reset. You can now use your new master password to login",
+        exhausted
+            ? "Recovery code used successfully and exhausted. Your master password has been reset. You can now use your new master password to login"
+            : "Your master password has been reset. You can now use your new master password to login. However, this recovery code could not be marked as used, so please Wipe and re-Generate your recovery codes after logging in.",
         "Master password reset"
     );
     exitToLogin();

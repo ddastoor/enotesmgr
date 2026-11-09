@@ -65,12 +65,12 @@ Master password page {
                             Display an error message "Sorry, you're out of luck - you don't have any recovery codes left. Try your best to remember your master password!!". Once the user dismisses this message, end the session and redirect to UI @ ./login-page.md
 
                         }
-                        else if (recovery file corresponding to recovery code doesn't exist) {
+                        else if (the recovery code does not successfully decrypt ANY recovery file - try to decrypt each recovery file in turn with the recovery code; there is no code -> file name mapping, see ./menu/menu-items/recovery-codes.md 'Recovery file naming') {
                             Display an error message "Invalid recovery code" and stay on this page.
 
                         }
                         else { 
-                            Fetch the recovery file and try to decrypt it using the recovery code.
+                            (The recovery file corresponding to the recovery code is the one it successfully decrypted above.)
                             If (decryption fails) {
                                 Display an error message "Invalid recovery code" and stay on this page.
                             }
@@ -83,7 +83,7 @@ Master password page {
                                 Use "file_password" to decrypt the settings file = settings json
                                 Reflect the settings json values immediately.
                                 Display a message "Recovery code used successfully and exhausted. Your master password has been reset. You can now use your new master password to login"
-                                Delete recovery file corresponding to this recovery code
+                                Delete recovery file corresponding to this recovery code (this "exhausts" the code: it now decrypts nothing and is rejected as invalid). Do this only AFTER the new config file has been saved, so a failed save does not use up the code. If the delete fails, the password reset still succeeded - say so, and tell the user to Wipe and re-Generate their recovery codes.
                                 Redirect to UI @ ./login-page.md
                             }
                         }

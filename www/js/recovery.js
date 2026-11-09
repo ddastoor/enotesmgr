@@ -1,10 +1,25 @@
-// Recovery code generation / wiping. A recovery file is the config json
-// encrypted with a 16-digit code, stored under a filename = sha256(code).
+// Recovery codes. Each recovery code is a random 16-digit number; its recovery
+// file is the config json encrypted with that code (same Argon2id + XSalsa20-
+// Poly1305 crypto as config.json).
+//
+// A recovery file's NAME is random and says nothing about its code. There is
+// deliberately no index, hash or mapping from code to file: anything derived
+// from the code that is cheaper to check than the Argon2id decryption itself
+// (e.g. naming files sha256(code), as earlier versions did) would let anyone who
+// obtains the encrypted files test billions of code guesses per second and skip
+// Argon2id entirely. So to find the file a code belongs to, we try to decrypt
+// each recovery file with it (at most ~10 Argon2id runs, ~1-2 s). The only way
+// to test a guess is the slow Argon2id decryption.
+//
+// "Exhausting" a code = deleting its recovery file once it has been used to
+// reset the master password; the code then decrypts nothing and is rejected.
 
 import { state, ONE_RECOVERY_LEFT_MARKER } from "./state.js";
-import { listChildren, createTextFile, deleteFile, findChild } from "./drive.js";
+import { listChildren, createTextFile, deleteFile, findChild, downloadText } from "./drive.js";
 import { createAppMeta } from "./lib/meta.js";
-import { encryptData, sha256Hex } from "./crypto/crypto.js";
+import { decryptData, encryptVerified } from "./crypto/crypto.js";
+
+const CODES_PER_BATCH = 10;
 
 // All real recovery files (excludes the one-recovery-left marker). Returns [{id,name}].
 export async function listRecoveryFiles() {
@@ -12,13 +27,23 @@ export async function listRecoveryFiles() {
     return files.filter((f) => f.name !== ONE_RECOVERY_LEFT_MARKER);
 }
 
+// 16-digit numeric code, leading zeros allowed. Uniform digits: random bytes
+// >= 250 are rejected so that every digit 0-9 is exactly equally likely.
 function randomCode() {
-    // 16-digit numeric code, leading zeros allowed.
     let code = "";
-    const digits = new Uint32Array(16);
-    window.crypto.getRandomValues(digits);
-    for (let i = 0; i < 16; i++) code += (digits[i] % 10).toString();
+    const buf = new Uint8Array(32);
+    while (code.length < 16) {
+        window.crypto.getRandomValues(buf);
+        for (const b of buf) {
+            if (b < 250 && code.length < 16) code += String(b % 10);
+        }
+    }
     return code;
+}
+
+// Random, meaningless recovery file name (never derived from the code).
+function randomRecoveryFileName() {
+    return "recovery-" + window.crypto.randomUUID();
 }
 
 // Generate 10 new unique recovery codes, encrypt the current config json with
@@ -26,32 +51,37 @@ function randomCode() {
 // Returns the list of plaintext codes.
 export async function generateRecoveryCodes() {
     const existing = await listChildren(state.folders.recovery);
-    const existingNames = new Set(existing.map((f) => f.name));
 
-    const codes = [];
-    const codeSet = new Set();
+    const codes = new Set();
+    while (codes.size < CODES_PER_BATCH) codes.add(randomCode());
     const configText = JSON.stringify(state.configJson);
 
-    while (codes.length < 10) {
-        const code = randomCode();
-        if (codeSet.has(code)) continue;
-        const hash = await sha256Hex(code);
-        if (existingNames.has(hash)) continue;
-        codeSet.add(code);
-        codes.push({ code, hash });
-    }
+    // Verified encrypt: never store a recovery file that its own code can't
+    // open (you'd only find out the day you need it). All 10 are encrypted and
+    // checked before anything is uploaded.
+    const encryptedFiles = [...codes].map((code) => encryptVerified(configText, code));
 
-    for (const { code, hash } of codes) {
-        const encrypted = encryptData(configText, code);
-        await createTextFile(hash, encrypted, state.folders.recovery, createAppMeta("recovery"));
+    // Upload. If an upload fails midway, delete the ones already created: their
+    // codes would never be shown to the user, so they'd only be dead weight.
+    const created = [];
+    try {
+        for (const encrypted of encryptedFiles) {
+            const f = await createTextFile(randomRecoveryFileName(), encrypted, state.folders.recovery, createAppMeta("recovery"));
+            created.push(f.id);
+        }
+    } catch (err) {
+        for (const id of created) {
+            try { await deleteFile(id); } catch (_) { /* best effort */ }
+        }
+        throw err;
     }
 
     // Remove the "only one recovery left" marker now that codes exist.
     const marker = existing.find((f) => f.name === ONE_RECOVERY_LEFT_MARKER);
     if (marker) await deleteFile(marker.id);
 
-    downloadCodes(codes.map((c) => c.code));
-    return codes.map((c) => c.code);
+    downloadCodes([...codes]);
+    return [...codes];
 }
 
 // Filename of the downloaded recovery codes file, e.g.
@@ -84,10 +114,27 @@ export async function wipeRecoveryCodes() {
     for (const f of files) await deleteFile(f.id);
 }
 
-// Find a recovery file by the code's hash. Returns {id,name} or null.
-export async function findRecoveryFile(code) {
-    const hash = await sha256Hex(code);
-    return findChild(state.folders.recovery, hash);
+// Find the recovery file this code unlocks by trying to decrypt each recovery
+// file with it (see the header comment: there is no code -> file mapping).
+// `files` is the list from listRecoveryFiles() (fetched if not given).
+// Returns { file, recoveryJson } for the file that decrypts to a valid config
+// json, or null if none does (a wrong code, or one already used up).
+// Drive/network errors are thrown, not reported as an invalid code.
+export async function findRecoveryFile(code, files = null) {
+    const candidates = files || (await listRecoveryFiles());
+    for (const file of candidates) {
+        const cipher = await downloadText(file.id);
+        let recoveryJson;
+        try {
+            recoveryJson = JSON.parse(decryptData(cipher, code));
+        } catch (_) {
+            continue; // not this code's file
+        }
+        if (recoveryJson && typeof recoveryJson.file_password === "string" && recoveryJson.file_password) {
+            return { file, recoveryJson };
+        }
+    }
+    return null;
 }
 
 // True if the "only one recovery left / don't ask again" marker file exists.
