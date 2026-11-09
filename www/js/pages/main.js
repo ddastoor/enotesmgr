@@ -157,7 +157,9 @@ export function render(container) {
                         <button id="ins-image" class="fmt-btn" title="Insert Image from local device">🖼️</button>
                         <button id="ins-audio" class="fmt-btn" title="Insert Audio from local device">🔊</button>
                     </div>
-                    <div id="editor" class="editor" contenteditable="true"
+                    <!-- spellcheck off: browser "enhanced" / cloud spell checkers
+                         (Chrome, Edge) send the typed text to their servers. -->
+                    <div id="editor" class="editor" contenteditable="true" spellcheck="false"
                          data-placeholder="Write your note here..."></div>
                 </div>
                 <div id="media-viewer" class="media-viewer" hidden></div>

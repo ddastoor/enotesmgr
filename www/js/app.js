@@ -171,4 +171,21 @@ export function resumeSessionTimer() {
 
 // ---- Boot -------------------------------------------------------------------
 
-navigate("login");
+// Refuse to run inside another site's frame (clickjacking: a hostile page could
+// overlay this app invisibly and trick clicks, e.g. on "Copy Export Token").
+// GitHub Pages can't send X-Frame-Options and a <meta> CSP can't set
+// frame-ancestors, so it's done here. The app is never legitimately framed.
+function isFramed() {
+    try {
+        return window.top !== window.self;
+    } catch (_) {
+        return true; // cross-origin access error: we are framed
+    }
+}
+
+if (isFramed()) {
+    document.body.textContent =
+        "For your security, eNotes can't be shown inside another website. Open it directly in its own tab.";
+} else {
+    navigate("login");
+}

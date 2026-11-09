@@ -344,6 +344,7 @@ Main page {
             contents {
 
                 Rich text editor {
+                    Browser spellcheck is turned OFF in the editor (spellcheck="false"): "enhanced" / cloud spell checkers (Chrome, Edge) send typed text to their servers, and notes hold passwords.
                     Toolbar with {
                         Undo button {
                             Label: ↶

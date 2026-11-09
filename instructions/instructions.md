@@ -46,6 +46,7 @@ Test launcher:
 Deployment (GitHub Pages):
     The app is the static ./www/ directory; it has no build step and is served as-is.
     The repository root ./index.html exists only to redirect to ./www/ (canonical link + meta refresh + location.replace, all using a RELATIVE "www/" target so it keeps working under the GitHub Pages project path https://<user>.github.io/enotesmgr/). The redirect preserves any query string and hash. So visiting the repo root lands the user in the actual app under www/.
+    Framing: the app refuses to run inside another site's frame (clickjacking protection, done in js/app.js since a <meta> CSP can't set frame-ancestors) and shows a short message instead.
     Security headers: GitHub Pages can't set HTTP headers, so ./www/index.html carries a Content-Security-Policy <meta> tag (only this site, Google sign-in, the Drive API and Google Fonts are allowed; 'wasm-unsafe-eval' is required for the WASM crypto). If the app ever needs a new external host, add it to that policy or the browser will block it.
 
 TODO (don't do till i tell you):
