@@ -6,7 +6,7 @@
         Master password edit box with corresponding label "Master password:"
         Re-enter master password edit box with corresponding label "Re-enter master password:"
         
-        A check box with text "Generate Recovery codes" - by default checked.
+        A short note: "10 recovery codes will be generated and downloaded. Use them if you ever forget your master password." (There is NO "Generate Recovery codes" checkbox: recovery codes are always generated - the user is never left without any, see ./one-or-zero-recovery-code-left-popup.md.)
 
         'Finish Setup' button {
             on click {

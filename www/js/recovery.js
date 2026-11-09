@@ -13,9 +13,13 @@
 //
 // "Exhausting" a code = deleting its recovery file once it has been used to
 // reset the master password; the code then decrypts nothing and is rejected.
+//
+// The user is never left with 0 recovery codes (see recoveryReminder.js):
+// setup always generates them, "Replace" generates new codes before deleting
+// the old ones, and logging in / resetting with 0 or 1 left requires new ones.
 
 import { state, ONE_RECOVERY_LEFT_MARKER } from "./state.js";
-import { listChildren, createTextFile, deleteFile, findChild, downloadText } from "./drive.js";
+import { listChildren, createTextFile, deleteFile, downloadText } from "./drive.js";
 import { createAppMeta } from "./lib/meta.js";
 import { decryptData, encryptVerified } from "./crypto/crypto.js";
 
@@ -108,10 +112,40 @@ function downloadCodes(codes) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Delete all recovery files from the recovery folder (including marker).
-export async function wipeRecoveryCodes() {
+// Replace ALL recovery codes (e.g. the codes file may have been seen by someone):
+// generate - and download - 10 new codes FIRST, then delete every old recovery
+// file, so the user is never left with no codes even if something fails midway.
+// If generating fails it throws and the old codes are left untouched. Returns
+// how many old codes could NOT be deleted (they still work; the user is told).
+export async function replaceRecoveryCodes() {
+    const oldFiles = await listRecoveryFiles();
+    await generateRecoveryCodes();
+    let notDeleted = 0;
+    for (const f of oldFiles) {
+        try {
+            await deleteFile(f.id);
+        } catch (e) {
+            console.error("Failed to delete an old recovery code", e);
+            notDeleted++;
+        }
+    }
+    return notDeleted;
+}
+
+// Number of recovery codes left. Also removes the "don't ask again" marker file
+// if an older version of the app left one behind: having no recovery codes is
+// no longer allowed, so the marker has no meaning any more (best effort).
+export async function countRecoveryCodes() {
     const files = await listChildren(state.folders.recovery);
-    for (const f of files) await deleteFile(f.id);
+    const marker = files.find((f) => f.name === ONE_RECOVERY_LEFT_MARKER);
+    if (marker) {
+        try {
+            await deleteFile(marker.id);
+        } catch (e) {
+            console.error("Failed to remove the old don't-ask marker", e);
+        }
+    }
+    return files.filter((f) => f.name !== ONE_RECOVERY_LEFT_MARKER).length;
 }
 
 // Find the recovery file this code unlocks by trying to decrypt each recovery
@@ -135,21 +169,4 @@ export async function findRecoveryFile(code, files = null) {
         }
     }
     return null;
-}
-
-// True if the "only one recovery left / don't ask again" marker file exists.
-export async function hasDontAskMarker() {
-    return !!(await findChild(state.folders.recovery, ONE_RECOVERY_LEFT_MARKER));
-}
-
-// Create the "don't ask again" marker as an empty file (no-op if already present).
-export async function createDontAskMarker() {
-    if (await hasDontAskMarker()) return;
-    await createTextFile(ONE_RECOVERY_LEFT_MARKER, "", state.folders.recovery);
-}
-
-// Delete the "don't ask again" marker if present (re-enables the reminder).
-export async function deleteDontAskMarker() {
-    const marker = await findChild(state.folders.recovery, ONE_RECOVERY_LEFT_MARKER);
-    if (marker) await deleteFile(marker.id);
 }

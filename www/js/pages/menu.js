@@ -1,7 +1,6 @@
 import { navigate } from "../app.js";
 import { state } from "../state.js";
 import { showAlert } from "../lib/dialogs.js";
-import { showRestartReminderPopup } from "../recoveryReminder.js";
 import { wipeAppData } from "../wipeAppData.js";
 
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
@@ -78,11 +77,7 @@ export function openMenu() {
                         Recovery Codes
                     </button>
                 </li>
-                <li>
-                    <button class="drawer-item" data-action="restart-reminder" title="Start recovery code generation reminder again">
-                        Restart Recovery Reminders
-                    </button>
-                </li>${exportItem}${wipeItem}
+${exportItem}${wipeItem}
             </ul>
         </nav>`;
 
@@ -99,10 +94,6 @@ export function openMenu() {
     wrap.querySelector('[data-action="recovery"]').addEventListener("click", () => {
         close();
         navigate("recoveryCodes");
-    });
-    wrap.querySelector('[data-action="restart-reminder"]').addEventListener("click", () => {
-        close();
-        showRestartReminderPopup();
     });
     const exportBtn = wrap.querySelector('[data-action="dl-export"]');
     if (exportBtn) exportBtn.addEventListener("click", () => {

@@ -23,10 +23,7 @@ export function render(container) {
                 <label class="field-label" for="su-pwd2">Re-enter master password:</label>
                 <input id="su-pwd2" type="password" class="text-input" autocomplete="new-password" />
 
-                <label class="checkbox-row">
-                    <input id="su-gen" type="checkbox" checked />
-                    <span>Generate Recovery codes</span>
-                </label>
+                <p class="muted small">10 recovery codes will be generated and downloaded. Use them if you ever forget your master password.</p>
 
                 <div id="su-error" class="inline-error"></div>
 
@@ -36,7 +33,6 @@ export function render(container) {
 
     const pwd = container.querySelector("#su-pwd");
     const pwd2 = container.querySelector("#su-pwd2");
-    const gen = container.querySelector("#su-gen");
     const err = container.querySelector("#su-error");
 
     container.querySelector("#su-finish").addEventListener("click", async () => {
@@ -49,7 +45,7 @@ export function render(container) {
         if (p1 !== p2) { err.textContent = "The two passwords do not match."; return; }
 
         try {
-            await runNewUserLogin(p1, gen.checked);
+            await runNewUserLogin(p1);
         } catch (e) {
             console.error(e);
             err.textContent = e && e.message === "ENCRYPT_VERIFY_FAILED"

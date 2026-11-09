@@ -20,16 +20,6 @@
                         }
                     }
 
-                    <!-- restart recovery reminders -->
-                    {
-                        menu item: "Restart Recovery Reminders" {
-                            tooltip: "Start recovery code generation reminder again"
-                            on click {
-                                Dismiss the menu pane
-                                Show the restart-recovery-reminder popup (see ./menu/menu-items/start-recovery-code-reminder.md).
-                            }
-                        }
-                    }
 
                     <!-- export CLI tools (PC only - see ../../export-cli.md) -->
                     {

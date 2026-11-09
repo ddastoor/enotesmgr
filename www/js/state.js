@@ -20,7 +20,6 @@ export const state = {
     // Used transiently to carry a freshly chosen master password between the
     // setup / reset flows and the new-user-login routine.
     pendingMasterPassword: null,
-    generateRecoveryOnSetup: false,
 };
 
 export function filePassword() {
@@ -36,7 +35,6 @@ export function resetState() {
     state.configJson = null;
     state.settingsJson = null;
     state.pendingMasterPassword = null;
-    state.generateRecoveryOnSetup = false;
 }
 
 export const DEFAULT_SETTINGS = { session_timeout_seconds: 300, app_theme: "Light" };

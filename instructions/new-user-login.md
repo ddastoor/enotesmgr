@@ -22,8 +22,8 @@ save encrypted config file and encrypted settings file to google drive
 
 The app should reflect the settings json values immediately.
 
-if (the "Generate Recovery codes" checkbox was checked by the user during setup, i.e. the caller of this page) {
+Always (recovery codes are never optional - the user is never left without any):
     the app should call the app's generate recovery functionality as if it was called from the recovery code menu option and tell the user via a popup that the recovery codes file ('EnotesMgrRecoveryCodes__<username>__<YYYY-MM-DD>.txt' - see ./UI/menu/menu-items/recovery-codes.md) is downloaded on their device.
-}
+    If generating fails, the account is still set up: continue to the main page, where the "No recovery codes" popup requires generating them (with retry) before the app can be used - see ./UI/one-or-zero-recovery-code-left-popup.md.
 
 Redirect the user to the app's main page

@@ -10,9 +10,11 @@
              }
 
 
+             page note: "Generate adds 10 more codes; your current codes keep working. Replace gives you 10 new codes and makes ALL your current codes stop working (use it if your codes file may have been seen by someone)."
+
              'Generate' button {
                 label: "Generate"
-                one description: "Generate 10 new random 16-digit numeric codes"
+                one description: "Generate 10 more codes (your current codes keep working)"
 
                 on click {
 
@@ -28,22 +30,26 @@
                     }
 
                     Download the 10 recovery codes listed line by line to the user's device, into a file named 'EnotesMgrRecoveryCodes__<username>__<YYYY-MM-DD>.txt' (the username is the local part of the user's google email, see ../../main-page.md "Username display" - and the date is the day of download; both tag the file so repeated downloads don't clash). Inform the user via a popup with message 'Recovery codes downloaded. Save them very safely!'
-                    Delete the 'one-or-no-recovery-files-left-dont-ask-marker-file' from the recovery folder if it exists.
+                    Delete the (legacy) 'one-or-no-recovery-files-left-dont-ask-marker-file' from the recovery folder if it exists.
+                    Existing recovery codes keep working ('Generate' ADDS 10 codes).
 
                 }
              }
 
 
-             'Wipe' button {
-                description: "Delete all recovery codes"
-                disabled if {
-                    no recovery codes exists in the app
-                }
+             'Replace' button (replaces the old 'Wipe' button; there is deliberately NO way to delete all recovery codes - the user is never left without any, see ../../one-or-zero-recovery-code-left-popup.md) {
+                description: "Replace all your codes with 10 new ones (current codes stop working)"
+                Use case: the codes file may have been seen by someone, so all current codes must stop working.
 
                 on click {
-                    Ask the user for a confirmation dialog asking "Are you sure you want to delete all recovery codes?".
+                    Ask for confirmation: "Replace all your recovery codes? 10 new codes will be generated and downloaded, and ALL your current recovery codes will stop working."
                     if (user confirms) {
-                        Delete all files from the recovery folder.
+                        Remember the list of current recovery files.
+                        FIRST generate 10 new recovery codes exactly like the 'Generate' button (saved + downloaded).
+                        If that fails: show "Could not generate new recovery codes. Your current codes were left unchanged." and stop - nothing is deleted.
+                        THEN delete every remembered (old) recovery file.
+                        Show "Your recovery codes have been replaced. The new codes were downloaded - save them very safely! Your old codes no longer work."
+                        (If some old files could not be deleted: say how many still work and to press Replace again.)
                     }
                     else {do nothing, stay on the screen}
                 }

@@ -1,6 +1,6 @@
 // The "new user login" routine (instructions/new-user-login.md). Runs after a
 // new user finishes setup: creates config + settings, persists them encrypted,
-// optionally generates recovery codes, then enters the main page.
+// always generates recovery codes, then enters the main page.
 
 import {
     state,
@@ -16,7 +16,7 @@ import { withStatus, showAlert } from "./lib/dialogs.js";
 import { generateRecoveryCodes } from "./recovery.js";
 import { maybeShowRecoveryReminder } from "./recoveryReminder.js";
 
-export async function runNewUserLogin(masterPassword, generateRecovery) {
+export async function runNewUserLogin(masterPassword) {
     await withStatus("Setting up your account...", async () => {
         // Build fresh settings + config json.
         state.settingsJson = { ...DEFAULT_SETTINGS };
@@ -31,8 +31,17 @@ export async function runNewUserLogin(masterPassword, generateRecovery) {
         await upsertTextFile(SETTINGS_FILE_NAME, settingsFile, state.folders.config, appMetaProps("settings"));
     });
 
-    if (generateRecovery) {
+    // Recovery codes are always generated (you're never left without any). If
+    // this fails, the account is still set up: the main page then requires new
+    // codes before the app can be used (see recoveryReminder.js), with retry.
+    let generated = false;
+    try {
         await withStatus("Generating recovery codes...", () => generateRecoveryCodes());
+        generated = true;
+    } catch (e) {
+        console.error("Failed to generate recovery codes during setup", e);
+    }
+    if (generated) {
         await showAlert(
             "Your recovery codes file (EnotesMgrRecoveryCodes__...txt) has been downloaded to your device. Save it very safely!",
             "Recovery codes downloaded"
