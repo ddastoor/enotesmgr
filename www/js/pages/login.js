@@ -9,7 +9,7 @@ export function render(container) {
     container.innerHTML = `
         <div class="page page-centered">
             <div class="auth-card">
-                <h1 class="brand-title">eNotes</h1>
+                <h1 class="brand-title">eNotesMgr</h1>
                 <p class="tagline">Your notes, securely stored on Google Drive.</p>
                 <button id="login-btn" class="btn btn-filled btn-google">
                     <span class="g-icon">G</span>

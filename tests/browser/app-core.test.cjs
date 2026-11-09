@@ -15,7 +15,15 @@ const { pathToFileURL } = require("url");
     ok(await page.title() === "eNotesMgr", `app tab title is "eNotesMgr" (got "${await page.title()}")`);
     const rootHtml = fs.readFileSync(path.join(__dirname, "..", "..", "index.html"), "utf8");
     ok(/<title>eNotesMgr<\/title>/.test(rootHtml), 'repo-root redirect page title is "eNotesMgr"');
-    ok((await page.textContent(".brand-title")).trim() === "eNotes", 'in-page brand heading is still "eNotes"');
+    ok((await page.textContent(".brand-title")).trim() === "eNotesMgr", 'landing (login) card title is "eNotesMgr"');
+    const fits = await page.evaluate(() => { const h = document.querySelector(".brand-title"), c = h.closest(".auth-card"); return h.scrollWidth <= h.clientWidth && c.scrollWidth <= c.clientWidth; });
+    ok(fits, "  ...and it fits in the card");
+    {
+        const phone = await newPage(browser, { viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
+        const phoneFits = await phone.evaluate(() => { const h = document.querySelector(".brand-title"), c = h.closest(".auth-card"); return h.scrollWidth <= h.clientWidth && c.scrollWidth <= c.clientWidth && document.documentElement.scrollWidth <= window.innerWidth; });
+        ok(phoneFits, "  ...and on a 320px-wide phone screen (no overflow)");
+        await phone.context().close();
+    }
 
     console.log("1. New user setup with recovery codes");
     await login(page);
@@ -25,6 +33,7 @@ const { pathToFileURL } = require("url");
     let codes = await readDownload(dl);
     await clickModal(page, "Recovery codes downloaded", "I've saved them");
     await onMain(page);
+    ok((await page.textContent(".app-header .brand-title")).trim() === "eNotes", 'main page header is still "eNotes"');
     ok(codes.length === 10 && codes.every((c) => /^\d{16}$/.test(c)), "10 x 16-digit codes downloaded (" + dl.suggestedFilename() + ")");
     ok(new Set(codes).size === 10, "codes are unique");
     let rf = recoveryFiles();

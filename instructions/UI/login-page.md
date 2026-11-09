@@ -2,7 +2,7 @@
 
 'Login Page' contents {
 
-    Title: eNotes
+    Title: eNotesMgr
     Tagline: Your notes, securely stored on Google Drive.
 
     Button 'Login with Google' {

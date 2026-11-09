@@ -1,6 +1,6 @@
 
 General Web SPA UI Style instructions {
-    Browser tab title: the page title shown in the browser tab is "eNotesMgr" (www/index.html, and the repo-root redirect page index.html). The in-page brand headings stay "eNotes".
+    Browser tab title: the page title shown in the browser tab is "eNotesMgr" (www/index.html, and the repo-root redirect page index.html). The landing (login) page card title is also "eNotesMgr" (see ./login-page.md); the other in-page brand headings (main page header, setup card) stay "eNotes".
 
     Whatever UI changes you make for this SPA project, make sure it always looks stylih and modern according to modern UI standards and also fits nicely and look nice on my phone's browser screen. Use google's Material 3 Expressive Design as for the UI design.
 
