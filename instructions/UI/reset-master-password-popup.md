@@ -7,13 +7,13 @@ Reset Master Password Page {
 
         New Master Password edit box with label "New master password:" {
             validation rules {
-                The new master password should be at least 8 characters long and contain at least 1 digit.
+                The new master password should be at least 8 characters long and contain at least 1 digit. It must NOT be exactly 16 digits (all numbers, nothing else): the master password popup treats exactly 16 digits as a recovery code, so such a master password could never be used to log in.
             }
         }
         
         Re-enter New Master Password edit box with label "Re-enter new master password:" {
             validation rules {
-                The new master password should be at least 8 characters long and contain at least 1 digit.
+                The new master password should be at least 8 characters long and contain at least 1 digit. It must NOT be exactly 16 digits (all numbers, nothing else): the master password popup treats exactly 16 digits as a recovery code, so such a master password could never be used to log in.
             }
         }
 

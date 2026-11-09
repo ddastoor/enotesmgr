@@ -4,6 +4,9 @@ import { runNewUserLogin } from "../newUserLogin.js";
 export function validateMasterPassword(pwd) {
     if (pwd.length < 8) return "Master password must be at least 8 characters long.";
     if (!/\d/.test(pwd)) return "Master password must contain at least 1 digit.";
+    // The unlock box treats exactly 16 digits as a recovery code, so such a
+    // master password could never be used to log in.
+    if (/^\d{16}$/.test(pwd)) return "Master password can't be exactly 16 digits (that format is reserved for recovery codes).";
     return null;
 }
 
