@@ -83,7 +83,7 @@ Master password page {
                                 Never leave the user with 0 or 1 recovery codes after this reset (if they then forgot the new master password too, they'd be locked out for good) {
                                     if (recovery file count, not counting the one being used, is 0 or 1) {
                                         Show a popup that can only be answered with 'Generate now' - title "Generate new recovery codes", text: ("That was your last recovery code. " if 0 left, else "That leaves you with only 1 recovery code. ") + "If you forgot your new master password too, you would be locked out for good, so generate 10 new recovery codes now."
-                                        Generate 10 new recovery codes (same as ./menu/menu-items/recovery-codes.md 'Generate': the codes file is downloaded) BEFORE using up the current code.
+                                        Run 'Generate a new set of recovery codes' (./menu/menu-items/recovery-codes.md) BEFORE using up the current code. The new set replaces all previous codes - the one just used included - once the user confirms the new file is saved.
                                         If generating fails, offer 'Try again' or 'Finish without new codes'. On 'Finish without new codes', do NOT use up (delete) the recovery code just used - it stays valid as a way back in - and say so in the final message: "Your master password has been reset. You can now use your new master password to login. New recovery codes could not be generated, so the recovery code you just used was NOT used up and still works. Please generate new recovery codes after you log in."
                                     }
                                 }

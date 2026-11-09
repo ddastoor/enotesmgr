@@ -14,9 +14,15 @@
 // "Exhausting" a code = deleting its recovery file once it has been used to
 // reset the master password; the code then decrypts nothing and is rejected.
 //
+// Codes always come as ONE complete set of 10: generating new codes replaces
+// ALL existing ones, so the newest downloaded codes file always holds every
+// valid code. (The app can't add the existing codes to a new file: it never
+// stores the codes themselves - only files encrypted WITH them.)
+//
 // The user is never left with 0 recovery codes (see recoveryReminder.js):
-// setup always generates them, "Replace" generates new codes before deleting
-// the old ones, and logging in / resetting with 0 or 1 left requires new ones.
+// setup always generates them, a new set is created before the old one is
+// deleted (and only once the user confirms the new file is saved), and logging
+// in / resetting with 0 or 1 left requires a new set.
 
 import { state, ONE_RECOVERY_LEFT_MARKER } from "./state.js";
 import { listChildren, createTextFile, deleteFile, downloadText } from "./drive.js";
@@ -50,11 +56,14 @@ function randomRecoveryFileName() {
     return "recovery-" + window.crypto.randomUUID();
 }
 
-// Generate 10 new unique recovery codes, encrypt the current config json with
-// each, and save them to the recovery folder. Triggers a download of the codes.
-// Returns the list of plaintext codes.
-export async function generateRecoveryCodes() {
+// Step 1 of generating a new set: create 10 new unique recovery codes, encrypt
+// the current config json with each and save them to the recovery folder. The
+// OLD codes are NOT touched here (see deleteOldRecoveryCodes). Throws - leaving
+// everything as it was - if anything fails.
+// Returns { codes: [plaintext codes], oldFiles: [the previous recovery files] }.
+export async function createNewRecoveryCodes() {
     const existing = await listChildren(state.folders.recovery);
+    const oldFiles = existing.filter((f) => f.name !== ONE_RECOVERY_LEFT_MARKER);
 
     const codes = new Set();
     while (codes.size < CODES_PER_BATCH) codes.add(randomCode());
@@ -80,18 +89,19 @@ export async function generateRecoveryCodes() {
         throw err;
     }
 
-    // Remove the "only one recovery left" marker now that codes exist.
+    // Remove a leftover "don't ask again" marker from the old app (best effort).
     const marker = existing.find((f) => f.name === ONE_RECOVERY_LEFT_MARKER);
-    if (marker) await deleteFile(marker.id);
+    if (marker) {
+        try { await deleteFile(marker.id); } catch (e) { console.error("Failed to remove the old don't-ask marker", e); }
+    }
 
-    downloadCodes([...codes]);
-    return [...codes];
+    return { codes: [...codes], oldFiles };
 }
 
 // Filename of the downloaded recovery codes file, e.g.
 // EnotesMgrRecoveryCodes__abc__2026-01-21.txt — tagged with the google username
 // and the download date so multiple downloads don't clash / overwrite.
-function recoveryCodesFilename() {
+export function recoveryCodesFilename() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -100,7 +110,9 @@ function recoveryCodesFilename() {
     return `EnotesMgrRecoveryCodes__${user}__${date}.txt`;
 }
 
-function downloadCodes(codes) {
+// Download the codes file (one code per line). Can be called again ("Download
+// again") with the same codes.
+export function downloadRecoveryCodes(codes) {
     const blob = new Blob([codes.join("\n") + "\n"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -112,14 +124,10 @@ function downloadCodes(codes) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Replace ALL recovery codes (e.g. the codes file may have been seen by someone):
-// generate - and download - 10 new codes FIRST, then delete every old recovery
-// file, so the user is never left with no codes even if something fails midway.
-// If generating fails it throws and the old codes are left untouched. Returns
-// how many old codes could NOT be deleted (they still work; the user is told).
-export async function replaceRecoveryCodes() {
-    const oldFiles = await listRecoveryFiles();
-    await generateRecoveryCodes();
+// Step 2 of generating a new set (once the user confirmed the new codes file is
+// saved): delete the previous recovery files, so only the new set works.
+// Returns how many could NOT be deleted (they still work; the user is told).
+export async function deleteOldRecoveryCodes(oldFiles) {
     let notDeleted = 0;
     for (const f of oldFiles) {
         try {

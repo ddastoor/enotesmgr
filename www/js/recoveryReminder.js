@@ -4,8 +4,10 @@
 // Policy: the user is NEVER left with 0 recovery codes, and never kept at a
 // single last one. (Using the last code and then forgetting the new master
 // password would otherwise lock the user out for good.)
-//   - Setup always generates codes; "Replace" generates new codes before
-//     deleting the old ones (see recovery.js). There is no way to delete them all.
+//   - Setup always generates codes. Codes come as one complete set of 10:
+//     generating a new set creates the new codes, downloads them and deletes the
+//     old ones only once the user confirms the file is saved (see
+//     generateRecoveryCodesWithUI). There is no way to delete them all.
 //   - After a master-password login with 0 or 1 codes left: generating 10 new
 //     codes is MANDATORY, otherwise the user is logged out. No "Later", no
 //     "Don't ask again".
@@ -14,7 +16,13 @@
 
 import { logout, suspendSessionTimer, resumeSessionTimer } from "./app.js";
 import { buildModal, withStatus, showAlert } from "./lib/dialogs.js";
-import { generateRecoveryCodes, countRecoveryCodes } from "./recovery.js";
+import {
+    createNewRecoveryCodes,
+    downloadRecoveryCodes,
+    deleteOldRecoveryCodes,
+    recoveryCodesFilename,
+    countRecoveryCodes,
+} from "./recovery.js";
 
 function textBody(message) {
     const body = document.createElement("div");
@@ -23,20 +31,58 @@ function textBody(message) {
     return body;
 }
 
-// Generate 10 new recovery codes (downloads the codes file) with the usual
-// status + confirmation. Auto-logout is paused while it runs. Returns true on
-// success, false on failure (already logged to the console).
+// Generate a complete NEW SET of 10 recovery codes, replacing ALL existing ones
+// (the newest codes file then always holds every valid code):
+//   1. create the new codes - the old ones are untouched (auto-logout paused);
+//   2. download the codes file and ask the user to confirm it is saved
+//      ("Download again" downloads it again);
+//   3. only then delete the old codes.
+// If the user never confirms (closes the tab, auto-logout), both sets keep
+// working, so nothing is lost. Returns true once the new codes exist, false if
+// creating them failed (logged to the console; nothing changed).
 export async function generateRecoveryCodesWithUI() {
+    let result;
     suspendSessionTimer();
     try {
-        await withStatus("Generating recovery codes...", () => generateRecoveryCodes());
+        result = await withStatus("Generating recovery codes...", () => createNewRecoveryCodes());
     } catch (e) {
         console.error("Failed to generate recovery codes", e);
         return false;
     } finally {
         resumeSessionTimer();
     }
-    await showAlert("Recovery codes downloaded. Save them very safely!", "Done");
+    const { codes, oldFiles } = result;
+
+    downloadRecoveryCodes(codes);
+    const oldNote = oldFiles.length === 0 ? ""
+        : oldFiles.length === 1 ? " Once you continue, your previous recovery code stops working."
+        : ` Once you continue, your previous ${oldFiles.length} recovery codes stop working.`;
+    for (;;) {
+        const choice = await buildModal({
+            title: "Recovery codes downloaded",
+            body: textBody(
+                `Your new recovery codes file (${recoveryCodesFilename()}) has been downloaded. ` +
+                "It holds ALL your recovery codes. Save it very safely!" + oldNote
+            ),
+            buttons: [
+                { label: "Download again", value: "again", variant: "btn-tonal" },
+                { label: "I've saved them", value: "saved", primary: true, variant: "btn-filled" },
+            ],
+        });
+        if (choice === "saved") break;
+        downloadRecoveryCodes(codes);
+    }
+
+    if (oldFiles.length) {
+        const notDeleted = await withStatus("Finishing...", () => deleteOldRecoveryCodes(oldFiles));
+        if (notDeleted) {
+            await showAlert(
+                `${notDeleted} of your previous recovery codes could not be removed and still work. ` +
+                "Generate new codes again to remove them.",
+                "Note"
+            );
+        }
+    }
     return true;
 }
 
@@ -59,10 +105,11 @@ export async function maybeShowRecoveryReminder() {
 // 0 or 1 codes left: generate new codes, or log out. Retries on failure.
 async function requireNewCodesAtLogin(count) {
     const title = count === 1 ? "Only 1 recovery code left" : "No recovery codes";
-    const message = (count === 1
-        ? "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. "
-        : "You have no recovery codes. If you forgot your master password, you would be locked out for good. ") +
-        "Generate 10 new recovery codes to keep using eNotes, or log out.";
+    const message = count === 1
+        ? "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. " +
+          "Generate 10 new recovery codes (they replace your current one) to keep using eNotes, or log out."
+        : "You have no recovery codes. If you forgot your master password, you would be locked out for good. " +
+          "Generate 10 new recovery codes to keep using eNotes, or log out.";
     for (;;) {
         const choice = await buildModal({
             title,

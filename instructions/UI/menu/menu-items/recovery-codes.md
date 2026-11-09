@@ -10,49 +10,39 @@
              }
 
 
-             page note: "Generate adds 10 more codes; your current codes keep working. Replace gives you 10 new codes and makes ALL your current codes stop working (use it if your codes file may have been seen by someone)."
+             page note: "New codes replace ALL your current codes: only the codes in the newest downloaded file work. (Also use this if your codes file may have been seen by someone.)"
 
-             'Generate' button {
-                label: "Generate"
-                one description: "Generate 10 more codes (your current codes keep working)"
+             Recovery codes always come as ONE complete set of 10 {
+                Generating new codes always REPLACES all current codes, so the newest downloaded codes file always holds every valid code. (The app can't put the existing codes into a new file: it never stores the codes themselves, only files encrypted with them - see 'Recovery file naming' below.)
+                There is no way to delete all recovery codes (no 'Wipe') and no way to "add" codes to the current set - the user is never left without codes, and never with codes that aren't in their newest file. See ../../one-or-zero-recovery-code-left-popup.md.
+             }
+
+             'Generate new codes' button {
+                label: "Generate new codes"
+                tooltip: "Generate 10 new codes (they replace all your current codes)"
 
                 on click {
-
-                    `exist-rec-lst` = Get a list of all existing recovery filenames in the recovery folder = "existing recovery filenames list"
-
-                    Generate 10 new, unique random 16-digit numeric codes (every digit uniformly random)
-
-                    These numeric code are meant to be master password replacements in case the user forgets their master password. Each code can be used only once.
-
-                    foreach (such new recovery code) {
-                        Encrypt config json with it (use the "verified encrypt" operation, see ../../../crypto.md) into a file with a RANDOM name (e.g. 'recovery-<uuid>') - see 'Recovery file naming' below
-                        Save this encrypted file into the recovery folder.
-                    }
-
-                    Download the 10 recovery codes listed line by line to the user's device, into a file named 'EnotesMgrRecoveryCodes__<username>__<YYYY-MM-DD>.txt' (the username is the local part of the user's google email, see ../../main-page.md "Username display" - and the date is the day of download; both tag the file so repeated downloads don't clash). Inform the user via a popup with message 'Recovery codes downloaded. Save them very safely!'
-                    Delete the (legacy) 'one-or-no-recovery-files-left-dont-ask-marker-file' from the recovery folder if it exists.
-                    Existing recovery codes keep working ('Generate' ADDS 10 codes).
-
+                    Ask for confirmation: "Generate 10 new recovery codes? They replace ALL your current recovery codes, which stop working once you've saved the new file."
+                    if (user confirms) { run 'Generate a new set of recovery codes' (below) }
+                    If it fails: show "Could not generate recovery codes. Your current codes were left unchanged."
                 }
              }
 
-
-             'Replace' button (replaces the old 'Wipe' button; there is deliberately NO way to delete all recovery codes - the user is never left without any, see ../../one-or-zero-recovery-code-left-popup.md) {
-                description: "Replace all your codes with 10 new ones (current codes stop working)"
-                Use case: the codes file may have been seen by someone, so all current codes must stop working.
-
-                on click {
-                    Ask for confirmation: "Replace all your recovery codes? 10 new codes will be generated and downloaded, and ALL your current recovery codes will stop working."
-                    if (user confirms) {
-                        Remember the list of current recovery files.
-                        FIRST generate 10 new recovery codes exactly like the 'Generate' button (saved + downloaded).
-                        If that fails: show "Could not generate new recovery codes. Your current codes were left unchanged." and stop - nothing is deleted.
-                        THEN delete every remembered (old) recovery file.
-                        Show "Your recovery codes have been replaced. The new codes were downloaded - save them very safely! Your old codes no longer work."
-                        (If some old files could not be deleted: say how many still work and to press Replace again.)
-                    }
-                    else {do nothing, stay on the screen}
-                }
+             'Generate a new set of recovery codes' operation (also used by setup, the 1-or-0-codes-left popup and the recovery-code reset) {
+                1) Remember the list of current recovery files (the OLD set).
+                2) Generate 10 new, unique random 16-digit numeric codes (every digit uniformly random). These numeric codes are meant to be master password replacements in case the user forgets their master password. Each code can be used only once.
+                   foreach (such new recovery code) {
+                       Encrypt config json with it (use the "verified encrypt" operation, see ../../../crypto.md) into a file with a RANDOM name (e.g. 'recovery-<uuid>') - see 'Recovery file naming' below
+                       Save this encrypted file into the recovery folder.
+                   }
+                   (All 10 are encrypted and self-checked before any is uploaded; if an upload fails midway, the new files already created are deleted and the OLD set is left untouched.)
+                   Auto-logout is paused while this runs.
+                   Delete the (legacy) 'one-or-no-recovery-files-left-dont-ask-marker-file' from the recovery folder if it exists.
+                3) Download the 10 recovery codes listed line by line to the user's device, into a file named 'EnotesMgrRecoveryCodes__<username>__<YYYY-MM-DD>.txt' (the username is the local part of the user's google email, see ../../main-page.md "Username display" - and the date is the day of download; both tag the file so repeated downloads don't clash).
+                4) Show a popup that can't be dismissed, title "Recovery codes downloaded": "Your new recovery codes file (<filename>) has been downloaded. It holds ALL your recovery codes. Save it very safely!" + (if there was an OLD set) " Once you continue, your previous <N> recovery codes stop working."
+                   Buttons: 'Download again' (downloads the same file again and shows the popup again) and 'I've saved them'.
+                5) Only after 'I've saved them': delete every file of the OLD set. If some can't be deleted, say: "<N> of your previous recovery codes could not be removed and still work. Generate new codes again to remove them."
+                If the user never confirms (closes the tab, auto-logout), the old AND new codes both keep working - nothing is lost.
              }
 
 

@@ -259,8 +259,12 @@ async function handleRecoveryCode(code, err) {
             try {
                 await deleteFile(recoveryFile.id);
             } catch (e) {
-                console.error("Failed to exhaust recovery code", e);
-                exhausted = false;
+                // 404: already gone - a new set was just generated above, which
+                // replaced (deleted) all previous codes, this one included.
+                if (!(e && e.status === 404)) {
+                    console.error("Failed to exhaust recovery code", e);
+                    exhausted = false;
+                }
             }
         }
         try {

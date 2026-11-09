@@ -5,7 +5,7 @@
     Why {
         If you use your last recovery code to reset your master password and then forget the NEW master password too, there is no way back in. So nothing in the app lets you end up with 0 or 1 codes and keep going:
             - Setup always generates 10 codes (../new-user-login.md).
-            - There is no "delete all codes": the recovery codes page has 'Replace', which generates 10 new codes BEFORE deleting the old ones (./menu/menu-items/recovery-codes.md).
+            - There is no "delete all codes": codes always come as one complete set of 10, and a new set is created - and confirmed saved by the user - BEFORE the old set is deleted (./menu/menu-items/recovery-codes.md).
             - A recovery-code reset that would leave 0 or 1 codes requires 10 new ones first (./master-password-popup.md).
             - And this popup, after every master-password login with 0 or 1 codes left.
         There is no "Later", no "Don't ask again" and no way to turn this off.
@@ -17,13 +17,13 @@
             else { "No recovery codes" }
         }
         popup description {
-            if (recovery file count == 1) { "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. Generate 10 new recovery codes to keep using eNotes, or log out." }
+            if (recovery file count == 1) { "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. Generate 10 new recovery codes (they replace your current one) to keep using eNotes, or log out." }
             else { "You have no recovery codes. If you forgot your master password, you would be locked out for good. Generate 10 new recovery codes to keep using eNotes, or log out." }
         }
 
         'Generate now' button {
             on click {
-                Generate 10 new recovery codes right here (same as the 'Generate' button of ./menu/menu-items/recovery-codes.md: downloads the codes file and shows "Recovery codes downloaded. Save them very safely!"). Auto-logout is paused while generating.
+                Run 'Generate a new set of recovery codes' (see ./menu/menu-items/recovery-codes.md: creates 10 new codes, downloads the codes file, asks the user to confirm it is saved, then deletes the old code).
                 If generating fails, show "Could not generate recovery codes. Please try again." and show this popup again.
                 On success, close the popup and stay on the main page.
             }
