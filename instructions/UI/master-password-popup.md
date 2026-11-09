@@ -79,7 +79,14 @@ Master password page {
                                 master password = fetch the new master password from the UI @ ./reset-master-password-popup.md
                                 config json = recovery json
                                 Encrypt config json using master password = config file. Use the "verified encrypt" operation (see ../crypto.md): do the encryption and its self-check BEFORE writing, so a failed self-check aborts the reset and leaves the existing config.json untouched. On such a failure, show an error like "Could not securely reset your password (encryption self-check failed). Your old config was left untouched - please try again." and do not proceed.
-                                Save config file to google drive
+                                Save config file to google drive. If this fails (or the self-check fails), show the error in a popup, do NOT use up the recovery code, and redirect to UI @ ./login-page.md so the user can try again.
+                                Never leave the user with 0 or 1 recovery codes after this reset (if they then forgot the new master password too, they'd be locked out for good) {
+                                    if (recovery file count, not counting the one being used, is 0 or 1) {
+                                        Show a popup that can only be answered with 'Generate now' - title "Generate new recovery codes", text: ("That was your last recovery code. " if 0 left, else "That leaves you with only 1 recovery code. ") + "If you forgot your new master password too, you would be locked out for good, so generate 10 new recovery codes now."
+                                        Generate 10 new recovery codes (same as ./menu/menu-items/recovery-codes.md 'Generate': the codes file is downloaded) BEFORE using up the current code.
+                                        If generating fails, offer 'Try again' or 'Finish without new codes'. On 'Finish without new codes', do NOT use up (delete) the recovery code just used - it stays valid as a way back in - and say so in the final message: "Your master password has been reset. You can now use your new master password to login. New recovery codes could not be generated, so the recovery code you just used was NOT used up and still works. Please generate new recovery codes after you log in."
+                                    }
+                                }
                                 Use "file_password" to decrypt the settings file = settings json
                                 Reflect the settings json values immediately.
                                 Display a message "Recovery code used successfully and exhausted. Your master password has been reset. You can now use your new master password to login"

@@ -9,7 +9,7 @@ import { appMetaProps } from "../lib/meta.js";
 import { decryptData, encryptVerified } from "../crypto/crypto.js";
 import { withStatus, showAlert } from "../lib/dialogs.js";
 import { listRecoveryFiles, findRecoveryFile } from "../recovery.js";
-import { maybeShowRecoveryReminder } from "../recoveryReminder.js";
+import { maybeShowRecoveryReminder, requireCodesAfterReset } from "../recoveryReminder.js";
 import { promptResetPassword } from "./resetMasterPassword.js";
 
 let backGuard = null;
@@ -228,21 +228,40 @@ async function handleRecoveryCode(code, err) {
         });
     } catch (e) {
         console.error(e);
-        err.textContent = e && e.message === "ENCRYPT_VERIFY_FAILED"
-            ? "Could not securely reset your password (encryption self-check failed). Your old config was left untouched - please try again."
-            : "Something went wrong resetting your password. Please try again.";
+        // The reset page is still on screen (the unlock page's inline error area
+        // is gone), so report in a popup, then start over at login. The code was
+        // not used up, so the user can simply try again.
+        await showAlert(
+            e && e.message === "ENCRYPT_VERIFY_FAILED"
+                ? "Could not securely reset your password (encryption self-check failed). Your old config was left untouched and your recovery code was not used up - please try again."
+                : "Something went wrong resetting your password. Your recovery code was not used up - please try again.",
+            "Reset failed"
+        );
+        exitToLogin();
         return;
     }
 
-    // 2) The password is reset: exhaust the code by deleting its recovery file.
+    // 2) Never let a recovery reset leave you with 0 or 1 codes: if you then
+    //    forgot the new password too, you'd be locked out for good. So require
+    //    10 new codes now, BEFORE this code is used up. If that fails and the
+    //    user finishes anyway, the code is kept (not used up) as a way back in.
+    const remainingAfterUse = recoveryFiles.length - 1;
+    let keepCode = false;
+    if (remainingAfterUse <= 1) {
+        keepCode = !(await requireCodesAfterReset(remainingAfterUse));
+    }
+
+    // 3) Exhaust the code by deleting its recovery file (unless kept above).
     //    Reflect the settings too (non-fatal: the session ends right after).
-    let exhausted = true;
+    let exhausted = !keepCode;
     await withStatus("Finishing...", async () => {
-        try {
-            await deleteFile(recoveryFile.id);
-        } catch (e) {
-            console.error("Failed to exhaust recovery code", e);
-            exhausted = false;
+        if (!keepCode) {
+            try {
+                await deleteFile(recoveryFile.id);
+            } catch (e) {
+                console.error("Failed to exhaust recovery code", e);
+                exhausted = false;
+            }
         }
         try {
             const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
@@ -256,9 +275,11 @@ async function handleRecoveryCode(code, err) {
     });
 
     await showAlert(
-        exhausted
-            ? "Recovery code used successfully and exhausted. Your master password has been reset. You can now use your new master password to login"
-            : "Your master password has been reset. You can now use your new master password to login. However, this recovery code could not be marked as used, so please Wipe and re-Generate your recovery codes after logging in.",
+        keepCode
+            ? "Your master password has been reset. You can now use your new master password to login. New recovery codes could not be generated, so the recovery code you just used was NOT used up and still works. Please generate new recovery codes after you log in."
+            : exhausted
+                ? "Recovery code used successfully and exhausted. Your master password has been reset. You can now use your new master password to login"
+                : "Your master password has been reset. You can now use your new master password to login. However, this recovery code could not be marked as used, so please Wipe and re-Generate your recovery codes after logging in.",
         "Master password reset"
     );
     exitToLogin();
