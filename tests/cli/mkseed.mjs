@@ -1,0 +1,45 @@
+// Builds the CLI test data in the current directory: offline/config.json +
+// offline/notes/* (encrypted note files) and a fake Drive tree (drive.json, plus
+// drive-evil.json with hostile "." / ".." folder names).
+// Usage: node mkseed.mjs <dir containing crypto.js + crypto.wasm>
+import fs from "fs";
+import path from "path";
+import { pathToFileURL } from "url";
+const CRYPTO_DIR = path.resolve(process.argv[2]);
+globalThis.__CRYPTO_WASM_BYTES__ = fs.readFileSync(path.join(CRYPTO_DIR, "crypto.wasm")).toString("base64");
+const m = await import(pathToFileURL(path.join(CRYPTO_DIR, "crypto.js")).href); await m.cryptoReady;
+const fp = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const notes = {
+  "bank": "<p><b>PIN</b> 4242 ✓ café</p><span class=\"media-embed\"><img src=\"data:image/png;base64," + PNG + "\"></span>",
+  "bank.html": "<p>collides with bank</p>",
+  "photo.png": "data:image/png;base64," + PNG,
+  "doc.pdf": "data:application/pdf;base64," + Buffer.from("%PDF-1.4\n%%EOF\n").toString("base64"),
+  "noext": "data:image/png;base64," + PNG,
+  "a:b*c?": "<p>weird name</p>",
+  "café ☕ notes": "<p>unicode name</p>",
+  "empty": "",
+};
+const config = m.encryptData(JSON.stringify({ file_password: fp }), "Master123");
+fs.rmSync("offline", { recursive: true, force: true }); fs.mkdirSync("offline/notes", { recursive: true });
+fs.writeFileSync("offline/config.json", config);
+const drive = []; let n = 0; const id = () => "id" + (++n);
+const add = (name, parent, content, folder) => { const f = { id: id(), name, parents: [parent], mimeType: folder ? "application/vnd.google-apps.folder" : "text/plain", content: content || "" }; drive.push(f); return f.id; };
+const mgr = add("eNotes Manager", "appDataFolder", "", true);
+const cfg = add("Config", mgr, "", true), ent = add("Entries", mgr, "", true), rec = add("Recovery", mgr, "", true);
+add("config.json", cfg, config); add("settings.json", cfg, m.encryptData(JSON.stringify({ session_timeout_seconds: 300, app_theme: "Light" }), fp));
+add("recovery-1111", rec, m.encryptData(JSON.stringify({ file_password: fp }), "1234567812345678"));
+for (const [name, content] of Object.entries(notes)) {
+  const ct = m.encryptData(content, fp);
+  add(name, ent, ct);
+  fs.writeFileSync("offline/notes/" + name, ct);
+}
+fs.writeFileSync("drive.json", JSON.stringify(drive));
+// Same tree plus hostile folder names "." and ".." (for the mirror-mode path guard)
+const evil = JSON.parse(JSON.stringify(drive));
+evil.push({ id: "evil1", name: "..", parents: [mgr], mimeType: "application/vnd.google-apps.folder", content: "" });
+evil.push({ id: "evil2", name: "ESCAPED.txt", parents: ["evil1"], mimeType: "text/plain", content: "should stay inside" });
+evil.push({ id: "evil3", name: ".", parents: [mgr], mimeType: "application/vnd.google-apps.folder", content: "" });
+evil.push({ id: "evil4", name: "DOT.txt", parents: ["evil3"], mimeType: "text/plain", content: "dot" });
+fs.writeFileSync("drive-evil.json", JSON.stringify(evil));
+console.log("seeded", Object.keys(notes).length, "notes");

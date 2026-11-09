@@ -1,0 +1,11 @@
+{
+  "name": "enotesmgr-tests",
+  "private": true,
+  "description": "Tests for eNotes: crypto, export CLI and browser end-to-end suites. See README.md.",
+  "scripts": {
+    "test": "node run-all.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
