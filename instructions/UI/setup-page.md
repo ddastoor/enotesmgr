@@ -1,6 +1,8 @@
 
 'Setup page' {
 
+    Card heading: "eNotesMgr"
+
     contents {
 
         Master password edit box with corresponding label "Master password:"

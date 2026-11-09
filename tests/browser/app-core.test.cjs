@@ -16,6 +16,22 @@ const { pathToFileURL } = require("url");
     const rootHtml = fs.readFileSync(path.join(__dirname, "..", "..", "index.html"), "utf8");
     ok(/<title>eNotesMgr<\/title>/.test(rootHtml), 'repo-root redirect page title is "eNotesMgr"');
     ok((await page.textContent(".brand-title")).trim() === "eNotesMgr", 'landing (login) card title is "eNotesMgr"');
+    {
+        // Guard: the app's own text never says a bare "eNotes" (only "eNotesMgr";
+        // "eNotes Manager" is the Drive folder name and must stay).
+        const www = path.join(__dirname, "..", "..", "www");
+        const files = [path.join(www, "index.html")];
+        const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+            const p = path.join(d, e.name);
+            if (e.isDirectory()) { if (!["crypto", "filetype-vendor"].includes(e.name)) walk(p); }
+            else if (p.endsWith(".js")) files.push(p);
+        });
+        walk(path.join(www, "js"));
+        const bare = files.flatMap((f) => fs.readFileSync(f, "utf8").split("\n")
+            .map((l, i) => [l, i]).filter(([l]) => /eNotes(?!Mgr| Manager)/.test(l))
+            .map(([, i]) => path.relative(www, f) + ":" + (i + 1)));
+        ok(bare.length === 0, 'no bare "eNotes" left in the app' + (bare.length ? ": " + bare.join(", ") : ""));
+    }
     const fits = await page.evaluate(() => { const h = document.querySelector(".brand-title"), c = h.closest(".auth-card"); return h.scrollWidth <= h.clientWidth && c.scrollWidth <= c.clientWidth; });
     ok(fits, "  ...and it fits in the card");
     {
@@ -27,6 +43,7 @@ const { pathToFileURL } = require("url");
 
     console.log("1. New user setup with recovery codes");
     await login(page);
+    ok((await page.textContent(".brand-title")).trim() === "eNotesMgr", 'setup card heading is "eNotesMgr"');
     await page.fill("#su-pwd", "Master123");
     await page.fill("#su-pwd2", "Master123");
     let [dl] = await Promise.all([page.waitForEvent("download"), page.click("#su-finish")]);

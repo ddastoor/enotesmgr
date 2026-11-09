@@ -191,7 +191,7 @@ function isFramed() {
 
 if (isFramed()) {
     document.body.textContent =
-        "For your security, eNotes can't be shown inside another website. Open it directly in its own tab.";
+        "For your security, eNotesMgr can't be shown inside another website. Open it directly in its own tab.";
 } else {
     navigate("login");
 }

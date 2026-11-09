@@ -107,9 +107,9 @@ async function requireNewCodesAtLogin(count) {
     const title = count === 1 ? "Only 1 recovery code left" : "No recovery codes";
     const message = count === 1
         ? "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. " +
-          "Generate 10 new recovery codes (they replace your current one) to keep using eNotes, or log out."
+          "Generate 10 new recovery codes (they replace your current one) to keep using eNotesMgr, or log out."
         : "You have no recovery codes. If you forgot your master password, you would be locked out for good. " +
-          "Generate 10 new recovery codes to keep using eNotes, or log out.";
+          "Generate 10 new recovery codes to keep using eNotesMgr, or log out.";
     for (;;) {
         const choice = await buildModal({
             title,

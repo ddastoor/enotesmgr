@@ -52,6 +52,7 @@ async function passwordLogin(page, pw) { await login(page); await unlockInput(pa
     await popup(page, "Only 1 recovery code left").waitFor();
     const b = await buttons(page, "Only 1 recovery code left");
     ok(b === "Log out / Generate now", `mandatory popup, buttons: "${b}" (no Later / Don't ask again)`);
+    ok((await popup(page, "Only 1 recovery code left").textContent()).includes("to keep using eNotesMgr, or log out"), 'popup text says "keep using eNotesMgr"');
     ok(await page.evaluate(() => { const e = new KeyboardEvent("keydown", { key: "n", bubbles: true }); document.dispatchEvent(e); return !document.querySelector(".modal-card .modal-title")?.textContent.includes("New note"); }), "app behind it can't be used (shortcut N ignored)");
     await page.keyboard.press("Escape");
     await page.waitForSelector("#login-btn", { timeout: 5000 });

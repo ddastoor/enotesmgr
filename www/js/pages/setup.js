@@ -14,7 +14,7 @@ export function render(container) {
     container.innerHTML = `
         <div class="page page-centered">
             <div class="auth-card">
-                <h1 class="brand-title small">eNotes</h1>
+                <h1 class="brand-title small">eNotesMgr</h1>
                 <h2 class="page-heading">Set up your account</h2>
 
                 <label class="field-label" for="su-pwd">Master password:</label>

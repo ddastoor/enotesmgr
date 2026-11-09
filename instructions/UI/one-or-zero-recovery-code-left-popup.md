@@ -17,8 +17,8 @@
             else { "No recovery codes" }
         }
         popup description {
-            if (recovery file count == 1) { "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. Generate 10 new recovery codes (they replace your current one) to keep using eNotes, or log out." }
-            else { "You have no recovery codes. If you forgot your master password, you would be locked out for good. Generate 10 new recovery codes to keep using eNotes, or log out." }
+            if (recovery file count == 1) { "You have only 1 recovery code left. If you used it and then forgot your new master password, you would be locked out for good. Generate 10 new recovery codes (they replace your current one) to keep using eNotesMgr, or log out." }
+            else { "You have no recovery codes. If you forgot your master password, you would be locked out for good. Generate 10 new recovery codes to keep using eNotesMgr, or log out." }
         }
 
         'Generate now' button {

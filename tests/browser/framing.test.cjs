@@ -35,7 +35,7 @@ const ok = (c, m) => { console.log((c ? "  PASS " : "  FAIL ") + m); if (!c) fai
         ok(!!frame, "the hostile page loaded the app in an iframe");
         if (frame) {
             const txt = await frame.evaluate(() => document.body.textContent);
-            ok(txt.includes("can't be shown inside another website"), "inside another site's iframe: shows the warning");
+            ok(txt.includes("eNotesMgr can't be shown inside another website"), "inside another site's iframe: shows the warning (\"eNotesMgr can't be shown...\")");
             ok(await frame.locator("#login-btn").count() === 0, "inside another site's iframe: no login button, app does not start");
         }
     } finally {
