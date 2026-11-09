@@ -22,6 +22,7 @@ Settings page {
 
                         app behavior {
                             After no user activity for 'session timeout seconds', log out
+                            The inactivity is measured in real (wall-clock) time, so time spent with the device asleep, the tab in the background, or the page in the browser's back/forward cache counts too: on any activity, or when the page becomes visible / focused / restored again, if 'session timeout seconds' have already passed since the last activity, log out instead of restarting the countdown.
                         } 
 
                     }

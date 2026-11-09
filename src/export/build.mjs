@@ -22,6 +22,9 @@ const banner =
     "#!/usr/bin/env node\n" +
     `// eNotes export CLI — self-contained, built by src/export/build.mjs. Do NOT edit by hand.\n` +
     `// build-hash: ${computeHash()}\n` +
+    // Node 18 has no globalThis.crypto by default; the crypto module requires a
+    // secure random source (it refuses the shim's Math.random fallback).
+    `if(!globalThis.crypto){globalThis.crypto=require("node:crypto").webcrypto;}\n` +
     `globalThis.__CRYPTO_WASM_BYTES__=${JSON.stringify(wasmB64)};\n`;
 
 await build({

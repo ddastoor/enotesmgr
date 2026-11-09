@@ -903,15 +903,28 @@ function insertNodeAtCursor(node) {
     sel.addRange(range);
 }
 
+// Built with DOM calls, never an HTML string: the popup shares this page's
+// origin, and a crafted image URL (a data: URL can contain a `"`) pasted into an
+// HTML string could break out of the src attribute and add an event handler.
 function openInNewWindow(dataUrl) {
     const w = window.open();
-    if (w) {
-        w.document.write(
-            `<title>Image</title><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh">` +
-            `<img src="${dataUrl}" style="max-width:100%;height:auto" /></body>`
-        );
-        w.document.close();
-    }
+    if (!w) return;
+    const doc = w.document;
+    doc.title = "Image";
+    const body = doc.body || doc.documentElement.appendChild(doc.createElement("body"));
+    Object.assign(body.style, {
+        margin: "0",
+        background: "#111",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+    });
+    const img = doc.createElement("img");
+    img.src = dataUrl;
+    img.style.maxWidth = "100%";
+    img.style.height = "auto";
+    body.appendChild(img);
 }
 
 // --- helpers -----------------------------------------------------------------

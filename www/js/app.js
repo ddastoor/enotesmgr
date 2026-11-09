@@ -73,42 +73,100 @@ export function logout() {
 }
 
 // ---- Inactivity session timeout --------------------------------------------
+//
+// Measured in wall-clock time (Date.now), not just with a setTimeout: timers
+// don't advance while a laptop sleeps, a phone suspends the tab, or the page sits
+// in the back/forward cache, and the first mouse move / touch on return used to
+// simply restart the countdown, leaving the vault unlocked indefinitely. Now any
+// activity, and the page becoming visible / focused / restored again, first
+// checks how long it has really been since the last activity and logs out if
+// the timeout has passed.
 
 let timerId = null;
 let suspendCount = 0;
+let sessionActive = false;
+let lastActivity = 0; // Date.now() of the last user activity
 const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
+const wakeEvents = [
+    [document, "visibilitychange"],
+    [window, "pageshow"],
+    [window, "focus"],
+];
 
 function timeoutSeconds() {
     const s = state.settingsJson && state.settingsJson.session_timeout_seconds;
     return Number.isFinite(s) ? s : DEFAULT_SETTINGS.session_timeout_seconds;
 }
 
-function resetTimer() {
+function isExpired() {
+    return sessionActive && suspendCount === 0 &&
+        Date.now() - lastActivity >= timeoutSeconds() * 1000;
+}
+
+// (Re)arm the timer for whatever is left of the timeout since lastActivity.
+function scheduleTimer() {
     if (timerId) clearTimeout(timerId);
-    if (suspendCount > 0) return;
-    timerId = setTimeout(() => logout(), timeoutSeconds() * 1000);
+    timerId = null;
+    if (!sessionActive || suspendCount > 0) return;
+    const remaining = Math.max(0, timeoutSeconds() * 1000 - (Date.now() - lastActivity));
+    timerId = setTimeout(checkSession, remaining);
+}
+
+// Timer fired, or the page woke up: log out if the timeout really has passed.
+function checkSession() {
+    if (isExpired()) logout();
+    else scheduleTimer();
+}
+
+function onActivity() {
+    if (isExpired()) {
+        logout();
+        return;
+    }
+    lastActivity = Date.now();
+    scheduleTimer();
+}
+
+function onWake() {
+    if (document.visibilityState === "hidden") return;
+    checkSession();
 }
 
 function startSessionTimer() {
-    activityEvents.forEach((ev) => document.addEventListener(ev, resetTimer, { passive: true }));
-    resetTimer();
+    if (!sessionActive) {
+        // A fresh authenticated session starts its countdown now.
+        sessionActive = true;
+        lastActivity = Date.now();
+        activityEvents.forEach((ev) => document.addEventListener(ev, onActivity, { passive: true }));
+        wakeEvents.forEach(([target, ev]) => target.addEventListener(ev, onWake));
+    }
+    // Navigating between authenticated pages: re-arm (picks up a changed timeout
+    // setting). An already-expired session is logged out by the timer right away.
+    scheduleTimer();
 }
 
 function stopSessionTimer() {
     if (timerId) clearTimeout(timerId);
     timerId = null;
-    activityEvents.forEach((ev) => document.removeEventListener(ev, resetTimer));
+    sessionActive = false;
+    activityEvents.forEach((ev) => document.removeEventListener(ev, onActivity));
+    wakeEvents.forEach(([target, ev]) => target.removeEventListener(ev, onWake));
 }
 
 // Suspend auto-logout during long operations (e.g. generating recovery codes).
 export function suspendSessionTimer() {
     suspendCount++;
     if (timerId) clearTimeout(timerId);
+    timerId = null;
 }
 
 export function resumeSessionTimer() {
     suspendCount = Math.max(0, suspendCount - 1);
-    if (suspendCount === 0) resetTimer();
+    if (suspendCount === 0) {
+        // The long operation counts as activity: restart the full timeout.
+        lastActivity = Date.now();
+        scheduleTimer();
+    }
 }
 
 // ---- Boot -------------------------------------------------------------------

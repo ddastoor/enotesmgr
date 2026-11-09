@@ -2,6 +2,20 @@ import { WASI, OpenFile, File, ConsoleStdout } from "./wasi-shim-vendor/dist/was
 
 const wasi = new WASI([], [], [new OpenFile(new File([])), new ConsoleStdout(), new ConsoleStdout()]);
 
+// The WASI shim's random_get (which supplies every salt and nonce) silently
+// falls back to Math.random() when globalThis.crypto is missing. Never allow
+// that: fail loudly instead of producing predictable salts/nonces.
+const wasiImports = {
+    ...wasi.wasiImport,
+    random_get(bufPtr, bufLen) {
+        const c = globalThis.crypto;
+        if (!c || typeof c.getRandomValues !== "function") {
+            throw new Error("No secure random number source (crypto.getRandomValues) available");
+        }
+        return wasi.wasiImport.random_get(bufPtr, bufLen);
+    },
+};
+
 let wasmInstance = null;
 
 async function initWasm() {
@@ -15,7 +29,7 @@ async function initWasm() {
         : await (await fetch("js/crypto/crypto.wasm")).arrayBuffer();
 
     const wasmModule = await WebAssembly.instantiate(wasmBytes, {
-        wasi_snapshot_preview1: wasi.wasiImport
+        wasi_snapshot_preview1: wasiImports
     });
 
     wasmInstance = wasmModule.instance;
@@ -100,7 +114,17 @@ function base64ToBytes(base64) {
     return bytes;
 }
 
+// A missing password must never reach the cipher: TextEncoder turns undefined
+// into "" and null into "null", so e.g. a missing file_password would otherwise
+// "encrypt" with an empty, trivially guessable password.
+function assertPassword(password) {
+    if (typeof password !== "string" || password.length === 0) {
+        throw new Error("Missing password");
+    }
+}
+
 export function encryptData(text, password) {
+    assertPassword(password);
     const passwordBytes = utf8Encode(password);
     const passwordPtr = wasm_malloc(passwordBytes.length);
     writeBytes(passwordPtr, passwordBytes);
@@ -153,6 +177,7 @@ export function encryptVerified(text, password) {
 }
 
 export function decryptData(base64Text, password) {
+    assertPassword(password);
     const passwordBytes = utf8Encode(password);
     const passwordPtr = wasm_malloc(passwordBytes.length);
     writeBytes(passwordPtr, passwordBytes);
