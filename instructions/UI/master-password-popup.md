@@ -4,9 +4,9 @@
 Master password page {
 
         layout {
-            The page shows a single card containing, top to bottom: a heading "Unlock eNotes", the introductory text, the master password edit box, an inline error area, and a row with the 'Cancel' and 'Unlock' buttons.
+            The page shows a single card containing, top to bottom: a heading "Unlock eNotesMgr", the introductory text, the master password edit box, an inline error area, and a row with the 'Cancel' and 'Unlock' buttons.
 
-            The "Unlock eNotes" heading must NOT use the default plain/dark text color (it looks dull). Instead give it a lively pastel gradient fill — the same gradient treatment used for the "eNotes" brand title (a left-to-right pastel blend of the deep accent purple into pastel pink into pastel blue, applied as a clipped gradient on the text). This must look good in both light and dark themes (use the theme's pastel/accent color variables so it adapts). This styling applies on both desktop and mobile, and only to this card's heading.
+            The "Unlock eNotesMgr" heading must NOT use the default plain/dark text color (it looks dull). Instead give it a lively pastel gradient fill — the same gradient treatment used for the "eNotesMgr" brand title on the main page (a left-to-right pastel blend of the deep accent purple into pastel pink into pastel blue, applied as a clipped gradient on the text). This must look good in both light and dark themes (use the theme's pastel/accent color variables so it adapts). This styling applies on both desktop and mobile, and only to this card's heading.
 
             if (on desktop / PC) {
                 The card is centered both horizontally and vertically in the viewport (the existing default look).
@@ -14,7 +14,7 @@ Master password page {
             if (on mobile) {
                 The card is moved up — positioned toward the top of the screen instead of vertically centered (still horizontally centered).
                 The card is also made vertically more compact than on desktop: reduced top/bottom padding, tighter spacing between the items inside the card, and a slightly smaller introductory text, so it occupies less vertical height.
-                This compact + top-aligned treatment must apply ONLY to this "Unlock eNotes" card, not to the other similar-looking cards (login, setup, reset-master-password).
+                This compact + top-aligned treatment must apply ONLY to this "Unlock eNotesMgr" card, not to the other similar-looking cards (login, setup, reset-master-password).
 
                 Inline "go" button inside the master password edit box (mobile only) {
                     Show a small round button docked inside the master password edit box at its right-hand edge, vertically centered within the box. It displays a right-pointing arrow ("->").

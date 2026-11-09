@@ -122,7 +122,7 @@ export function render(container) {
         <div class="page main-page">
             <header class="app-header">
                 <div class="header-top">
-                    <h1 class="brand-title gradient">eNotes</h1>
+                    <h1 class="brand-title gradient">eNotesMgr</h1>
                     <div class="header-actions">
                         <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
                         <button id="btn-more" class="icon-btn" title="More options">☰</button>

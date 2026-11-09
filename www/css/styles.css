@@ -129,7 +129,7 @@ body {
 
 .tagline { color: var(--on-surface-muted); margin: 0 0 12px; font-size: 16px; }
 .page-heading { font-size: 22px; font-weight: 700; margin: 4px 0 8px; }
-/* Give the "Unlock eNotes" heading a lively pastel gradient (same treatment as
+/* Give the "Unlock eNotesMgr" heading a lively pastel gradient (same treatment as
    the brand title) instead of the default drab text color. Works in both themes. */
 .unlock-page .page-heading {
     background: linear-gradient(120deg, var(--accent-deep), var(--pastel-pink) 70%, var(--pastel-blue));
@@ -609,7 +609,7 @@ body {
     .settings-actions, .recovery-actions { margin: 14px 12px; }
     .icon-btn { width: 40px; height: 40px; font-size: 17px; }
 
-    /* Unlock eNotes card only: move it up (top-aligned instead of vertically
+    /* Unlock eNotesMgr card only: move it up (top-aligned instead of vertically
        centered) and make it vertically more compact. */
     .unlock-page.page-centered { justify-content: flex-start; }
     .unlock-page .auth-card { padding: 18px 22px; gap: 8px; }

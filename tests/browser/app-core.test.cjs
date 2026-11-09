@@ -33,7 +33,7 @@ const { pathToFileURL } = require("url");
     let codes = await readDownload(dl);
     await clickModal(page, "Recovery codes downloaded", "I've saved them");
     await onMain(page);
-    ok((await page.textContent(".app-header .brand-title")).trim() === "eNotes", 'main page header is still "eNotes"');
+    ok((await page.textContent(".app-header .brand-title")).trim() === "eNotesMgr", 'main page header is "eNotesMgr"');
     ok(codes.length === 10 && codes.every((c) => /^\d{16}$/.test(c)), "10 x 16-digit codes downloaded (" + dl.suggestedFilename() + ")");
     ok(new Set(codes).size === 10, "codes are unique");
     let rf = recoveryFiles();
@@ -56,6 +56,7 @@ const { pathToFileURL } = require("url");
 
     console.log("3. Unlock with master password");
     await login(page);
+    ok((await page.textContent(".unlock-page .page-heading")).trim() === "Unlock eNotesMgr", 'unlock card heading is "Unlock eNotesMgr"');
     await unlockInput(page, "Wrong123");
     await page.waitForFunction(() => document.querySelector("#mp-error").textContent.includes("Decryption failed"));
     ok(true, "wrong master password rejected");
@@ -206,6 +207,29 @@ const { pathToFileURL } = require("url");
         ok(info.imgs === 1 && info.title === "Image", "popup shows the image");
         ok(!info.onerror && !(await mp.evaluate(() => window.__pwned)), "crafted image URL can't inject code into the popup");
         await mp.context().close();
+    }
+
+    console.log("10. Headings fit on narrow phones (unlock card + main page header)");
+    for (const width of [320, 360]) {
+        const ph = await newPage(browser, { viewport: { width, height: 700 }, isMobile: true, hasTouch: true });
+        await login(ph);
+        const unlockFits = await ph.evaluate(() => {
+            const h = document.querySelector(".unlock-page .page-heading"), c = h.closest(".auth-card");
+            return h.textContent.trim() === "Unlock eNotesMgr" && h.scrollWidth <= h.clientWidth && c.scrollWidth <= c.clientWidth
+                && document.documentElement.scrollWidth <= window.innerWidth;
+        });
+        ok(unlockFits, `${width}px: "Unlock eNotesMgr" fits in its card, no page overflow`);
+        await unlockInput(ph, "NewPass456");
+        await onMain(ph);
+        const headerFits = await ph.evaluate(() => {
+            const t = document.querySelector(".app-header .brand-title"), a = document.querySelector(".header-actions");
+            const tr = t.getBoundingClientRect(), ar = a.getBoundingClientRect();
+            const noOverlap = tr.right <= ar.left + 0.5 || tr.bottom <= ar.top + 0.5 || ar.bottom <= tr.top + 0.5;
+            return t.textContent.trim() === "eNotesMgr" && t.scrollWidth <= t.clientWidth && noOverlap
+                && ar.right <= window.innerWidth && document.documentElement.scrollWidth <= window.innerWidth;
+        });
+        ok(headerFits, `${width}px: main header "eNotesMgr" fits next to the header buttons, no overlap or overflow`);
+        await ph.context().close();
     }
 
     await browser.close();

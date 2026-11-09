@@ -16,7 +16,7 @@ Main page {
     contents {
 
         header area {
-            Title: "eNotes" (gradient styled)
+            Title: "eNotesMgr" (gradient styled)
             
             Settings button {
                 position: to the right of title
