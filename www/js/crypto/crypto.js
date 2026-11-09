@@ -123,41 +123,49 @@ function assertPassword(password) {
     }
 }
 
+// Zero a WASM heap buffer, then free it. wasm_free alone leaves the bytes in
+// place, so passwords and decrypted text would linger in WASM memory long after
+// use. (A ptr of 0 means the allocation failed: nothing to wipe or free.)
+function wipeAndFree(ptr, len) {
+    if (!ptr || !wasmInstance) return;
+    new Uint8Array(wasmInstance.exports.memory.buffer).fill(0, ptr, ptr + len);
+    wasm_free(ptr);
+}
+
 export function encryptData(text, password) {
     assertPassword(password);
     const passwordBytes = utf8Encode(password);
-    const passwordPtr = wasm_malloc(passwordBytes.length);
-    writeBytes(passwordPtr, passwordBytes);
-
     const msgBytes = utf8Encode(text);
-    const msgPtr = wasm_malloc(msgBytes.length);
-    writeBytes(msgPtr, msgBytes);
+    const outLen = msgBytes.length + 512;
+    let passwordPtr = 0, msgPtr = 0, outPtr = 0;
+    try {
+        passwordPtr = wasm_malloc(passwordBytes.length);
+        writeBytes(passwordPtr, passwordBytes);
 
-    const outPtr = wasm_malloc(msgBytes.length + 512);
+        msgPtr = wasm_malloc(msgBytes.length);
+        writeBytes(msgPtr, msgBytes);
 
-    const encLen = encrypt_sym(
-        msgPtr,
-        msgBytes.length,
-        passwordPtr,
-        passwordBytes.length,
-        outPtr
-    );
+        outPtr = wasm_malloc(outLen);
 
-    if (encLen < 0) {
-        wasm_free(msgPtr);
-        wasm_free(outPtr);
-        wasm_free(passwordPtr);
-        throw new Error("encrypt_sym failed");
+        const encLen = encrypt_sym(
+            msgPtr,
+            msgBytes.length,
+            passwordPtr,
+            passwordBytes.length,
+            outPtr
+        );
+
+        if (encLen < 0) throw new Error("encrypt_sym failed");
+
+        return bytesToBase64(readBytes(outPtr, encLen));
+    } finally {
+        // Always runs (success or error): wipe every buffer, then free it.
+        wipeAndFree(msgPtr, msgBytes.length);
+        wipeAndFree(outPtr, outLen);
+        wipeAndFree(passwordPtr, passwordBytes.length);
+        passwordBytes.fill(0);
+        msgBytes.fill(0);
     }
-
-    const encBytes = readBytes(outPtr, encLen);
-    const base64Out = bytesToBase64(encBytes);
-
-    wasm_free(msgPtr);
-    wasm_free(outPtr);
-    wasm_free(passwordPtr);
-
-    return base64Out;
 }
 
 // Encrypt `text` with `password`, then immediately decrypt the result and
@@ -179,36 +187,36 @@ export function encryptVerified(text, password) {
 export function decryptData(base64Text, password) {
     assertPassword(password);
     const passwordBytes = utf8Encode(password);
-    const passwordPtr = wasm_malloc(passwordBytes.length);
-    writeBytes(passwordPtr, passwordBytes);
-
     const encBytes = base64ToBytes(base64Text);
-    const encPtr = wasm_malloc(encBytes.length);
-    writeBytes(encPtr, encBytes);
+    let passwordPtr = 0, encPtr = 0, outPtr = 0;
+    let decBytes = null;
+    try {
+        passwordPtr = wasm_malloc(passwordBytes.length);
+        writeBytes(passwordPtr, passwordBytes);
 
-    const outPtr = wasm_malloc(encBytes.length);
+        encPtr = wasm_malloc(encBytes.length);
+        writeBytes(encPtr, encBytes);
 
-    const decLen = decrypt_sym(
-        encPtr,
-        encBytes.length,
-        passwordPtr,
-        passwordBytes.length,
-        outPtr
-    );
+        outPtr = wasm_malloc(encBytes.length);
 
-    if (decLen < 0) {
-        wasm_free(encPtr);
-        wasm_free(outPtr);
-        wasm_free(passwordPtr);
-        throw new Error("Bad password or corrupted ciphertext");
+        const decLen = decrypt_sym(
+            encPtr,
+            encBytes.length,
+            passwordPtr,
+            passwordBytes.length,
+            outPtr
+        );
+
+        if (decLen < 0) throw new Error("Bad password or corrupted ciphertext");
+
+        decBytes = readBytes(outPtr, decLen);
+        return utf8Decode(decBytes);
+    } finally {
+        // Always runs (success or error): wipe every buffer, then free it.
+        wipeAndFree(encPtr, encBytes.length);
+        wipeAndFree(outPtr, encBytes.length);
+        wipeAndFree(passwordPtr, passwordBytes.length);
+        passwordBytes.fill(0);
+        if (decBytes) decBytes.fill(0);
     }
-
-    const decBytes = readBytes(outPtr, decLen);
-    const plainText = utf8Decode(decBytes);
-
-    wasm_free(encPtr);
-    wasm_free(outPtr);
-    wasm_free(passwordPtr);
-
-    return plainText;
 }

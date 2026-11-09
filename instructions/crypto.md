@@ -3,6 +3,9 @@ For crypto operations {
 
     Use ./src/crypto code to symmetrically encrypt and decrypt file contents and/or things in the app like in-memory json, etc. This has NOTHING to do with google auth and signing into the app using google oauth.
 
+    crypto.wasm is committed STRIPPED of debug info (wasm-strip from WABT: removes only DWARF / name custom sections - the code is byte-identical - shrinking it from ~1.6 MB to ~37 KB and not leaking local build paths). If you rebuild it, strip it again.
+    crypto.js zeroes every WASM buffer it allocates (password, plaintext, output) before freeing it, so secrets don't linger in WASM memory.
+
     Use the crypto.wasm code via the crypto.js access functions that were written for accessing the crypto.wasm code, from the ./src/crypto folder of the project, specifically 
 
     
