@@ -46,11 +46,11 @@ function dumpDrive() {
     return file;
 }
 // Run the CLI in a fresh folder; returns { code, out, dir, files: {relPath: Buffer}, modes }.
-function cli(args, input, { driveFile = null, preload = [] } = {}) {
+function cli(args, input, { driveFile = null, preload = [], env = {} } = {}) {
     const cwd = fs.mkdtempSync(path.join(WORK, "run-"));
     const pre = [...preload, ...(driveFile ? [FAKEFETCH] : [])].flatMap((p) => ["-r", p]);
     const r = spawnSync(process.execPath, [...pre, CLI, ...args], {
-        cwd, input, encoding: "utf8", env: { ...process.env, FAKE_DRIVE: driveFile || "" },
+        cwd, input, encoding: "utf8", env: { ...process.env, FAKE_DRIVE: driveFile || "", ...env },
     });
     const files = {}, modes = {};
     const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
@@ -193,6 +193,67 @@ const isPrivate = (r) => process.platform === "win32" || Object.entries(r.modes)
     check("offline wizard, single normal file with images", cli(["-m", "off"], `${configPath}\nf\n${path.join(entriesDir, "plain-image")}\n${MASTER}\n`), ["plain-image"]);
     r = cli(["-m", "off", "-c", configPath, "-d", entriesDir], "WrongPass9\n");
     ok(r.code === 1 && r.out.includes("Could not decrypt config.json") && !Object.keys(r.files).length, "offline, wrong master password: clear error, nothing written");
+
+    console.log("4b. Every other option combination, on the app's data");
+    const all = NOTES.map((n) => n.name);
+    const one = "secret-image"; // a sensitive note with embedded pictures
+    const oneFile = path.join(entriesDir, one);
+    const bad = path.join(WORK, "does-not-exist");
+    check("offline -c -n -d (-d wins)", cli(["-m", "off", "-c", configPath, "-n", oneFile, "-d", entriesDir], `${MASTER}\n`));
+    check("offline -c only, wizard 'd'", cli(["-m", "off", "-c", configPath], `d\n${entriesDir}\n${MASTER}\n`));
+    check("offline -c only, wizard default", cli(["-m", "off", "-c", configPath], `\n${entriesDir}\n${MASTER}\n`));
+    check("offline -c only, wizard 'f'", cli(["-m", "off", "-c", configPath], `f\n${oneFile}\n${MASTER}\n`), [one]);
+    check("offline -d only (asks for config.json)", cli(["-m", "off", "-d", entriesDir], `${configPath}\n${MASTER}\n`));
+    check("offline -n only (asks for config.json)", cli(["-m", "off", "-n", oneFile], `${configPath}\n${MASTER}\n`), [one]);
+    r = cli(["-m", "off", "-c", bad, "-d", entriesDir], `${configPath}\n${MASTER}\n`);
+    check("offline, bad -c path (asked again)", r);
+    ok(r.out.includes("File not found"), "offline, bad -c path: says 'File not found'");
+    check("offline, bad -d path (asked again)", cli(["-m", "off", "-c", configPath, "-d", bad], `${entriesDir}\n${MASTER}\n`));
+    check("offline, bad -n path (asked again)", cli(["-m", "off", "-c", configPath, "-n", bad], `${oneFile}\n${MASTER}\n`), [one]);
+    check("offline, wizard with wrong paths typed first", cli(["-m", "off"], `${bad}\n${configPath}\nd\n${bad}\n${entriesDir}\n${MASTER}\n`));
+    r = cli(["-m", "off"], "\n");
+    ok(r.code === 1 && r.out.includes("No path entered") && !Object.keys(r.files).length, "offline, empty path: aborts, nothing written");
+    check("offline with -t / -x too (ignored)", cli(["-m", "off", "-c", configPath, "-d", entriesDir, "-t", "GOODTOKEN", "-x"], `${MASTER}\n`));
+    check("offline on Node 18", cli(["-m", "off", "-c", configPath, "-d", entriesDir], `${MASTER}\n`, { preload: [NODE18] }));
+    const messy = path.join(WORK, "messy");
+    fs.cpSync(entriesDir, messy, { recursive: true });
+    fs.copyFileSync(configPath, path.join(messy, "config.json"));
+    fs.writeFileSync(path.join(messy, "README.txt"), "not a note");
+    r = cli(["-m", "off", "-c", configPath, "-d", messy], `${MASTER}\n`);
+    check("offline -d, folder also holding non-note files", r);
+    ok(r.out.includes("SKIPPED config.json") && r.out.includes("SKIPPED README.txt"), "offline -d: non-note files listed as SKIPPED");
+    check("online, '-t' without a value (asks)", cli(["-m", "on", "-t"], `GOODTOKEN\n${MASTER}\n`, { driveFile }));
+    check("online with -c / -n / -d too (ignored)", cli(["-m", "on", "-t", "GOODTOKEN", "-c", configPath, "-n", oneFile, "-d", entriesDir], `${MASTER}\n`, { driveFile }));
+    check("online, momentary Drive miss", cli(["-m", "on", "-t", "GOODTOKEN"], `${MASTER}\n`, { driveFile, env: { FAKE_HIDE_ONCE: "eNotes Manager,Config,Entries,config.json" } }));
+    // The app's Drive data plus an empty 2nd tree and an OLDER config.json with
+    // another key (listed first): the CLI must still pick the key that opens the
+    // notes - it tries their outer (file password) layer, sensitive ones too.
+    const tree = JSON.parse(fs.readFileSync(driveFile, "utf8"));
+    const cfgFolder = tree.find((f) => f.name === "Config").id;
+    tree.unshift({ id: "dupcfg", name: "config.json", parents: [cfgFolder], mimeType: "text/plain",
+        content: C.encryptData(JSON.stringify({ file_password: "another-key" }), MASTER), appProperties: { DateTimeCreated: "2020-01-01T00:00" } });
+    tree.unshift({ id: "dupE", name: "Entries", parents: ["dupM"], mimeType: "application/vnd.google-apps.folder", content: "" });
+    tree.unshift({ id: "dupM", name: "eNotes Manager", parents: ["appDataFolder"], mimeType: "application/vnd.google-apps.folder", content: "" });
+    const dupFile = path.join(WORK, "drive-dups.json");
+    fs.writeFileSync(dupFile, JSON.stringify(tree));
+    check("online, duplicate tree + older config.json with another key", cli(["-m", "on", "-t", "GOODTOKEN"], `${MASTER}\n`, { driveFile: dupFile }));
+    const noCfg = path.join(WORK, "drive-noconfig.json");
+    fs.writeFileSync(noCfg, JSON.stringify(JSON.parse(fs.readFileSync(driveFile, "utf8")).filter((f) => f.name !== "config.json")));
+    r = cli(["-m", "on", "-t", "GOODTOKEN"], `${MASTER}\n`, { driveFile: noCfg });
+    ok(r.code === 1 && r.out.includes("recovery codes"), "online, config.json missing: points to the recovery-code fix");
+    r = cli(["-m", "on"], "\n", { driveFile });
+    ok(r.code === 1 && r.out.includes("needs an export token"), "online, empty token: usage error");
+    const mirror2 = cli(["-m", "on", "-x"], "GOODTOKEN\n", { driveFile });
+    const m2 = fs.readdirSync(mirror2.dir).find((d) => d.startsWith("eNotes Manager_"));
+    ok(mirror2.code === 0 && NOTES.every((n) => fs.readFileSync(path.join(mirror2.dir, m2, "Entries", n.name), "utf8") === fileByName(n.name).content),
+        "mirror with the token typed at the prompt: every note as stored");
+    r = cli(["-m", "on", "-t", "BADTOKEN", "-x"], "", { driveFile });
+    ok(r.code === 1 && r.out.includes("rejected the export token"), "mirror, bad token: clear error");
+    for (const [label, args] of [["no arguments", []], ["-m bogus", ["-m", "maybe"]]]) {
+        r = cli(args, "");
+        ok(r.code === 1 && r.out.includes("Usage:") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
+    }
+    ok(all.length === 6, "(all of the above on the app's 6 notes)");
 
     console.log("5. The .sensitive files open with their note password (and only with it)");
     for (const n of NOTES.filter((x) => x.sensitive)) {

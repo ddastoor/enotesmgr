@@ -4,7 +4,7 @@
 //   node tests/run-all.mjs                 # everything
 //   node tests/run-all.mjs --only crypto   # one suite (repeat --only for more)
 //
-// Suites: verify, crypto, cli, sensitive, app-core, features, framing, password-rules,
+// Suites: verify, crypto, cli, sensitive, cli-options, app-core, features, framing, password-rules,
 // recovery-lockout, data-safety, cli-roundtrip, sensitive-notes, cli-matrix, media-parity, google-signin, fonts. The browser suites run against the app in ./www served by
 // ./serve.py on a free local port, with Google sign-in stubbed and Google Drive
 // faked in memory - no real Google account is ever used.
@@ -25,6 +25,7 @@ const NODE_SUITES = [
     { name: "crypto", desc: "crypto module", args: [path.join(TESTS, "crypto.test.mjs")] },
     { name: "cli", desc: "export CLI (vs. the original CLI)", args: [path.join(TESTS, "cli/run.mjs")] },
     { name: "sensitive", desc: "sensitive notes: envelope, two layers, export rules, CLI", args: [path.join(TESTS, "sensitive.test.mjs")] },
+    { name: "cli-options", desc: "export CLI: every option combination x vaults with / without sensitive notes", args: [path.join(TESTS, "cli/options.mjs")] },
 ];
 const BROWSER_SUITES = [
     { name: "app-core", desc: "setup, unlock, notes, recovery, timeout, CSP, popup" },
