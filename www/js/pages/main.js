@@ -325,6 +325,16 @@ function onGlobalKeydown(e) {
         return;
     }
 
+    // Alt+N / Alt+U: like the sensitive (padlock) New / Upload buttons. Not in
+    // the editor: on a Mac, Option+N / Option+U type accents (ñ, ü) there.
+    // Matched on the physical key (e.code), since on a Mac e.key is the accent.
+    if (e.altKey && !ctrl && !e.shiftKey && (e.code === "KeyN" || e.code === "KeyU")) {
+        if (inEditor) return;
+        e.preventDefault();
+        clickToolbar(e.code === "KeyN" ? "tb-new-sensitive" : "tb-upload-sensitive");
+        return;
+    }
+
     // Remaining shortcuts: single keys, no Ctrl/Alt/Meta, and not in the editor.
     if (ctrl || e.altKey) return;
     if (inEditor) return;
@@ -350,6 +360,8 @@ function showShortcutsHelp() {
         ["Ctrl + S", "Save the current note"],
         ["N", "New note"],
         ["U", "Upload a file"],
+        ["Alt + N", "New sensitive note (extra password)"],
+        ["Alt + U", "Upload a file as a sensitive note"],
         ["R", "Rename the current note"],
         ["D", "Download the current note"],
         ["X", "Delete the current note"],

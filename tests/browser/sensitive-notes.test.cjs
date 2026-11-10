@@ -188,6 +188,59 @@ function cli(cliPath, args, input, driveFile) {
     ok((await page.$$eval(".search-item", (lis) => lis.map((li) => li.textContent))).join() === "bank" + LOCK, "search: typing the name finds the sensitive note");
     await page.click(".search-cancel");
 
+    console.log("2b. Keyboard shortcuts Alt+N / Alt+U (PC)");
+    const anyModal = () => page.locator(".modal-card").count();
+    // Which file input a key opens. The inputs' click() is recorded instead of
+    // opening real file dialogs (headless Chromium sometimes drops a file dialog
+    // opened right after another one was closed - also on main).
+    const chooserFor = async (keys) => {
+        await page.evaluate(() => {
+            window.__opened = [];
+            window.__realClick = window.__realClick || HTMLInputElement.prototype.click;
+            HTMLInputElement.prototype.click = function () { if (this.type === "file") window.__opened.push(this.id); else window.__realClick.call(this); };
+        });
+        await page.keyboard.press(keys);
+        await page.waitForTimeout(300);
+        return page.evaluate(() => { HTMLInputElement.prototype.click = window.__realClick; return window.__opened.join(","); });
+    };
+    await page.keyboard.press("Escape"); // focus out of the editor
+    await page.keyboard.press("Alt+n");
+    await modal(page, "new sensitive note").waitFor({ timeout: 5000 });
+    ok(true, "Alt+N opens the sensitive New prompt");
+    await clickModal(page, "new sensitive note", "Cancel");
+    await page.keyboard.press("n");
+    await modal(page, "Enter a name for the new note").waitFor({ timeout: 5000 });
+    ok(await modal(page, "new sensitive note").count() === 0, "plain N still opens the ordinary New prompt");
+    await clickModal(page, "Enter a name for the new note", "Cancel");
+    await page.keyboard.press("Escape");
+    ok(await chooserFor("Alt+u") === "hidden-upload-sensitive", "Alt+U opens the file dialog of the sensitive Upload");
+    ok(await chooserFor("u") === "hidden-upload", "plain U still opens the ordinary Upload's file dialog");
+    // A Mac's Option+N: e.key is an accent / dead key, e.code is still KeyN.
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Dead", code: "KeyN", altKey: true, bubbles: true, cancelable: true })));
+    await modal(page, "new sensitive note").waitFor({ timeout: 5000 });
+    ok(true, "Mac Option+N (dead key, code KeyN) opens it too");
+    await clickModal(page, "new sensitive note", "Cancel");
+    // Not while typing in the note, and not while a popup is open.
+    await page.click("#editor"); await page.keyboard.press("End");
+    const textBefore = await editorText();
+    await page.keyboard.press("Alt+n");
+    const uInEditor = await chooserFor("Alt+u");
+    await page.waitForTimeout(400);
+    ok(await anyModal() === 0 && uInEditor === "" && await editorText() === textBefore, "in the editor Alt+N / Alt+U do nothing (no prompt, no file dialog, text unchanged)");
+    await page.keyboard.press("Escape");
+    await page.click("#tb-search"); await page.waitForSelector(".search-item");
+    await page.keyboard.press("Alt+n"); await page.waitForTimeout(400);
+    ok(await anyModal() === 1 && await modal(page, "new sensitive note").count() === 0, "with a popup open (search) Alt+N does nothing");
+    await page.click(".search-cancel");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("?");
+    await modal(page, "Keyboard shortcuts").waitFor();
+    const help = await modal(page, "Keyboard shortcuts").textContent();
+    ok(help.includes("Alt + N") && help.includes("New sensitive note") && help.includes("Alt + U") && help.includes("Upload a file as a sensitive note"),
+        "the ? help lists Alt + N and Alt + U");
+    await clickModal(page, "Keyboard shortcuts", "Close");
+
     console.log("3. Opening a sensitive note (dropdown / search / Refresh) asks for its password every time");
     const selectedLabel = () => page.$eval("#file-select", (s) => s.options[s.selectedIndex].textContent);
     const searchPick = async (q) => {
@@ -422,6 +475,8 @@ function cli(cliPath, args, input, driveFile) {
     const mob = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await login(mob); await unlockInput(mob, "Master123"); await onMain(mob);
     ok(await mob.isVisible("#tb-new-sensitive") && await mob.isVisible("#tb-upload-sensitive"), "mobile: padlock New / Upload buttons shown");
+    await mob.keyboard.press("Alt+n"); await mob.waitForTimeout(400);
+    ok(await mob.locator(".modal-card").count() === 0, "mobile: no keyboard shortcuts (Alt+N does nothing)");
     await mob.selectOption("#file-select", "diary");
     await modal(mob, "is a sensitive note").waitFor();
     await modal(mob, "is a sensitive note").locator("input[type=password]").fill("DiaryPass1");

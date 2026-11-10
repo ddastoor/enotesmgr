@@ -265,6 +265,7 @@ Main page {
                     On both PC and mobile. Position: after the Rename button, followed by the sensitive 'Upload' button, then Delete.
                     label: a padlock icon (inline SVG) followed by "New". Styled amber so it stands apart from the ordinary New button.
                     tooltip: "Create a new SENSITIVE note (protected by an extra password of its own)"
+                    keyboard shortcut (PC): Alt+N - see ./keyboard-shortcuts.md
                     on click {
                         Create a new sensitive rich text note - see ../sensitive-notes.md 'Creating a sensitive note'. (The ordinary New button is unchanged.)
                     }
@@ -274,6 +275,7 @@ Main page {
                     On both PC and mobile. Position: immediately to the right of the sensitive 'New' button.
                     label: a padlock icon (inline SVG) followed by "↑U". Styled amber like the sensitive 'New' button.
                     tooltip: "Upload a file as a SENSITIVE note (protected by an extra password of its own)"
+                    keyboard shortcut (PC): Alt+U - see ./keyboard-shortcuts.md
                     on click {
                         Upload a file as a new sensitive note - see ../sensitive-notes.md 'Creating a sensitive note'. (The ordinary Upload button is unchanged.)
                     }
