@@ -177,6 +177,16 @@ function cli(cliPath, args, input, driveFile) {
     ok(tryDec(stored.slice(PREFIX.length), FP) === null && tryDec(stored.slice(PREFIX.length), "Master123") === null,
         "neither the file password nor the master password opens the inner layer");
     ok(fileByName("bank").appProperties.Sensitive === "yes", "Sensitive=yes kept on save");
+    // The search list marks it the same way; typing / picking use the plain name.
+    await page.click("#tb-search");
+    await page.waitForSelector(".search-item");
+    const searchLabels = await page.$$eval(".search-item", (lis) => lis.map((li) => li.textContent));
+    ok(searchLabels.join("|") === ["bank" + LOCK, "doc.pdf", "plain"].join("|"), "search list: 'bank 🔒', 'doc.pdf', 'plain' - padlock only on the sensitive note: " + searchLabels.join(" | "));
+    await page.fill(".search-input", "\u{1F512}");
+    ok(await page.locator(".search-item").count() === 0, "search: the padlock is not part of the name (typing it matches nothing)");
+    await page.fill(".search-input", "bank");
+    ok((await page.$$eval(".search-item", (lis) => lis.map((li) => li.textContent))).join() === "bank" + LOCK, "search: typing the name finds the sensitive note");
+    await page.click(".search-cancel");
 
     console.log("3. Opening a sensitive note (dropdown / search / Refresh) asks for its password every time");
     const selectedLabel = () => page.$eval("#file-select", (s) => s.options[s.selectedIndex].textContent);

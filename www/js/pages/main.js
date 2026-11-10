@@ -455,7 +455,10 @@ async function onSelectChange(e) {
 // Open the note-search dialog; if the user picks a note, select it in the
 // dropdown and run the normal file-selection flow.
 async function onSearch() {
-    const chosen = await showNoteSearch(entries.map((e) => e.name)); // entries are pre-sorted
+    const chosen = await showNoteSearch(
+        entries.map((e) => e.name), // entries are pre-sorted
+        new Set(entries.filter((e) => isMarkedSensitive(e.meta)).map((e) => e.name)), // listed with a padlock
+    );
     if (!chosen) return;
     const sel = document.getElementById("file-select");
     sel.value = chosen;
