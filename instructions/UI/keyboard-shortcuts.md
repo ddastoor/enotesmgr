@@ -40,6 +40,18 @@ Main page keyboard shortcuts {
             action: like pressing the Upload button.
         }
 
+        'Alt+N' {
+            focus condition: not in the rich text area.
+            action: like pressing the sensitive 'New' button (padlock) - create a new sensitive note, see ../sensitive-notes.md.
+            note: matched on the physical N key (KeyboardEvent.code "KeyN"): on a Mac Option+N types an accent, so e.key is not "n". Not active in the rich text area, so Option+N still types accents (ñ) there.
+        }
+
+        'Alt+U' {
+            focus condition: not in the rich text area.
+            action: like pressing the sensitive 'Upload' button (padlock) - upload a file as a sensitive note, see ../sensitive-notes.md.
+            note: matched on the physical U key (KeyboardEvent.code "KeyU"), for the same reason as Alt+N.
+        }
+
         'R' {
             focus condition: not in the rich text area.
             action: like pressing the Rename button.

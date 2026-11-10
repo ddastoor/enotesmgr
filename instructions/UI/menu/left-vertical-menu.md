@@ -43,6 +43,18 @@
                             }
                         }
                     }
+                    {
+                        menu item: "Decrypt Sensitive File" {
+                            PC only - NOT shown on mobile. In the "Tools (PC only)" section, after "Copy Export Token".
+                            tooltip: "Decrypt a sensitive note file (.sensitive) exported by the export utility. Stays on this device: nothing is sent to Google Drive"
+                            on click {
+                                Dismiss the menu pane
+                                Open a file dialog. For the picked file: find the sensitive envelope in it \(a '.sensitive' file from the export utility, or an older utility's '.html' of a sensitive note\); if there is none, say the file is not a sensitive note exported by eNotesMgr and stop.
+                                Ask for that note's password \(wrong password: ask again\), decrypt it with the WASM crypto, and download the result named and formatted per ../../export-cli.md "Output rules" \(e.g. 'bank.sensitive' -> 'bank.html', 'photo.png.sensitive' -> 'photo.png'\).
+                                Entirely local and stateless: NO Google Drive calls, and nothing in the app changes. See ../../sensitive-notes.md.
+                            }
+                        }
+                    }
 
                     <!-- wipe all app data (PC only - destructive) -->
                     {

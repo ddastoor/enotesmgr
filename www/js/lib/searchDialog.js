@@ -6,7 +6,10 @@
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
 // names: an array of note names, already sorted alphabetically by the caller.
-export function showNoteSearch(names) {
+// sensitive (optional): a Set of the names that are sensitive notes; they are
+// listed with a padlock after the name (like the file selector). Filtering and
+// the returned value only ever use the plain name.
+export function showNoteSearch(names, sensitive = null) {
     return new Promise((resolve) => {
         const mobile = isMobile();
 
@@ -50,6 +53,14 @@ export function showNoteSearch(names) {
                 li.setAttribute("role", "option");
                 li.dataset.idx = String(i);
                 li.textContent = name;
+                if (sensitive && sensitive.has(name)) {
+                    const lock = document.createElement("span");
+                    lock.className = "search-lock";
+                    lock.title = "Sensitive note";
+                    lock.setAttribute("aria-label", "sensitive note");
+                    lock.textContent = " \u{1F512}";
+                    li.appendChild(lock);
+                }
                 list.appendChild(li);
             });
             activeIdx = 0;

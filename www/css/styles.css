@@ -639,3 +639,26 @@ body {
     }
     .mp-go-btn:active { transform: translateY(-50%) scale(.92); }
 }
+
+/* ---- Sensitive notes (extra per-note password) ------------------------------ */
+/* Toolbar "padlock New" / "padlock ↑U": create a sensitive note. Amber, so they
+   stand apart from the ordinary New / ↑U buttons. */
+.tb-sensitive { display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: #fbe7c4; color: #6b4708; }
+.tb-sensitive:hover:not(:disabled) { background: #f6d49a; }
+.tb-sensitive .lock-icon { flex: 0 0 auto; }
+:root[data-theme="dark"] .tb-sensitive { background: #4a3612; color: #ffd98f; }
+:root[data-theme="dark"] .tb-sensitive:hover:not(:disabled) { background: #5c4417; }
+
+/* Password dialogs (sensitive notes): stacked fields + a highlighted warning. */
+.pwd-input + .pwd-input { margin-top: 10px; }
+.modal-warning {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: #fdf0d8;
+    color: #5a3a06;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+}
+:root[data-theme="dark"] .modal-warning { background: #3d2e12; color: #ffe2b0; }

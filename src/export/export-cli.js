@@ -6,11 +6,14 @@
 // built-ins).
 //
 // It decrypts the user's eNotes notes and dumps them to a fresh output dir, in
-// two modes:
-//   online  (-m on):  read every note from Google Drive using an export token,
-//                     and write them DECRYPTED locally — OR, with -x, mirror the
-//                     whole 'eNotes Manager' Drive tree locally, still encrypted.
-//   offline (-m off): read a local config.json + local encrypted note file(s).
+// three modes (run it with --help for the full help):
+//   online    (-m on):  read every note from Google Drive using an export token,
+//                       and write them DECRYPTED locally — OR, with -x, mirror the
+//                       whole 'eNotes Manager' Drive tree locally, still encrypted.
+//   offline   (-m off): read a local config.json + local encrypted note file(s).
+//   sensitive (-m sensitive): decrypt "<name>.sensitive" files (sensitive notes
+//                       that the other modes wrote still locked with their own
+//                       note password) - asks each note's password.
 //
 // Online auth = token hand-off (no OAuth in the CLI, the most future-proof
 // option): the SPA already signs in via Google's maintained GIS library and
@@ -23,6 +26,7 @@ import { cryptoReady, decryptData } from "../../www/js/crypto/crypto.js";
 // The note -> output-file decision (type, filename, html wrapping, byte decoding)
 // is shared with the in-app Download button so the two produce identical output.
 import { buildNoteExport, sanitizeName } from "../../www/js/lib/noteExport.js";
+import { isSensitiveContent, findSensitivePayload, sensitiveBaseName } from "../../www/js/lib/sensitiveNote.js";
 import {
     mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync,
 } from "node:fs";
@@ -53,25 +57,130 @@ function parseArgs(argv) {
             case "-c": a.c = v; i++; break;
             case "-n": a.n = v; i++; break;
             case "-d": a.d = v; i++; break;
+            case "-s": a.s = v; i++; break;
             case "-x": a.x = true; break; // flag, no value
+            case "-h": case "--help": a.h = true; break;
         }
     }
     return a;
 }
 
+const USAGE =
+    "Usage:\n" +
+    "  Online:    node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]\n" +
+    "             (get the token from the app menu: 'Copy Export Token' - PC only,\n" +
+    "              valid about 1 hour; without -t you are asked to paste it)\n" +
+    "             without -x: export all notes, decrypted, into 'eNotes Manager Export_<date>'\n" +
+    "             with -x:    download the whole 'eNotes Manager' Drive folder as a dated,\n" +
+    "                         still-encrypted LOCAL copy 'eNotes Manager_<date>', then exit\n" +
+    "  Offline:   node enotesmgr-export-cli.js -m off   (interactive wizard; optionally\n" +
+    "             pre-fill with -c <config.json> and -n <note-file> | -d <notes-dir>)\n" +
+    "             Works on a local copy made earlier with '-m on -x' (no internet needed):\n" +
+    "               -c \"eNotes Manager_<date>/Config/config.json\"\n" +
+    "               -d \"eNotes Manager_<date>/Entries\"\n" +
+    "             config.json is not downloadable from the Google Drive website (the app\n" +
+    "             keeps its data in Drive's hidden app-data area): '-m on -x' is the way.\n" +
+    "             Use the master password that was in use when that copy was made.\n" +
+    "  Sensitive: node enotesmgr-export-cli.js -m sensitive [-s <file.sensitive | folder>]\n" +
+    "             decrypt sensitive notes, which the modes above export still locked with\n" +
+    "             their own password as <name>.sensitive (asks each note's password).\n" +
+    "             In the app (PC): menu > 'Decrypt Sensitive File' does the same.\n" +
+    "  Help:      node enotesmgr-export-cli.js --help\n";
+
 function usageExit(msg) {
     if (msg) console.error("Error: " + msg + "\n");
-    console.error(
-        "Usage:\n" +
-        "  Online:  node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]\n" +
-        "           (get the token from the app menu: 'Copy Export Token')\n" +
-        "           (-x: download the whole 'eNotes Manager' Drive folder as a\n" +
-        "            dated, still-encrypted LOCAL backup, then exit)\n" +
-        "  Offline: node enotesmgr-export-cli.js -m off   (interactive wizard; optionally\n" +
-        "           pre-fill with -c <config.json> and -n <note-file> | -d <notes-dir>)\n"
-    );
+    console.error(USAGE + "\nRun 'node enotesmgr-export-cli.js --help' for the full help.\n");
     process.exit(1);
 }
+
+// -h / --help: the full documentation, on stdout.
+const HELP = `eNotesMgr export utility - enotesmgr-export-cli.js
+
+Exports your eNotesMgr notes to files on this computer: from Google Drive, or
+from a local copy of your data. It needs only Node.js 18 or newer (no npm
+install, no other files): the app's own encryption code is built in.
+
+USAGE
+  node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]
+  node enotesmgr-export-cli.js -m off [-c <config.json>] [-n <note-file> | -d <notes-folder>]
+  node enotesmgr-export-cli.js -m sensitive [-s <file.sensitive | folder>]
+  node enotesmgr-export-cli.js -h | --help
+
+MODES
+  -m on         Online: read your notes from Google Drive. Needs an export
+                token: in the app, on a PC, open the menu and pick
+                'Copy Export Token' (it is valid about 1 hour).
+                  without -x  decrypt every note into a new folder
+                              'eNotes Manager Export_<date>' (asks for your
+                              master password).
+                  with -x     download the whole 'eNotes Manager' Drive folder,
+                              still encrypted, into a new folder
+                              'eNotes Manager_<date>': a local copy for offline
+                              use and backup (no password asked).
+  -m off        Offline: decrypt notes from a local copy made with '-m on -x'
+                (no internet needed). Asks for anything not given as an option:
+                the config.json, one note file or a whole folder of them, and
+                the master password. Writes into a new folder
+                'eNotes Manager Export_<date>'.
+  -m sensitive  Decrypt sensitive notes. The two modes above can only remove
+                the master-password layer, so they write a sensitive note still
+                locked with its own note password, as <name>.sensitive. This
+                mode asks for each note's password (just Enter skips that note)
+                and writes the readable notes into a new folder
+                'eNotes Manager Sensitive_<date>'. No Google Drive, no master
+                password. (In the app, on a PC: menu > 'Decrypt Sensitive File'
+                does the same.)
+
+OPTIONS
+  -t <token>    (on) the export token. Without -t you are asked to paste it
+                (hidden input).
+  -x            (on) make the still-encrypted local copy instead of decrypting.
+  -c <file>     (off) the config.json of a local copy, e.g.
+                "eNotes Manager_<date>/Config/config.json"
+  -d <folder>   (off) a folder of note files, e.g. "eNotes Manager_<date>/Entries"
+  -n <file>     (off) one note file from that folder. If -d is also given, -d wins.
+  -s <path>     (sensitive) a .sensitive file, or a folder holding them (e.g. an
+                'eNotes Manager Export_<date>' folder). Without -s you are asked.
+  -h, --help    show this help.
+  Options that don't apply to the chosen mode are ignored. A path that doesn't
+  exist is asked for again.
+
+WHERE config.json COMES FROM
+  The app keeps its data in Google Drive's hidden app-data area, so config.json
+  can't be downloaded from the Google Drive website. Make a local copy with
+      node enotesmgr-export-cli.js -m on -x
+  and give '-m off' its Config/config.json and its Entries folder. A copy is a
+  snapshot: run '-m on -x' again to include newer notes. It opens with the
+  master password that was in use when the copy was made.
+
+WHAT YOU GET
+  Rich text note  -> <name>.html: looks as it did in the app, with its pictures
+                     and audio built in.
+  Uploaded file   -> the original file under its own name (photo.png, doc.pdf...).
+  Sensitive note  -> <name>.sensitive, still locked with the note's own password;
+                     '-m sensitive' turns it into <name>.html / the original file.
+  Names that clash get " (1)", " (2)"... - nothing is ever overwritten.
+
+SECURITY
+  - Passwords and the export token are only ever typed at hidden prompts. There
+    are no options for them on purpose: they would be kept in your shell
+    history and be visible to other programs.
+  - Everything written is private to you (folders 700, files 600; except on
+    Windows, which doesn't use these permissions).
+  - Decrypted files are NOT encrypted: delete them when you no longer need them.
+  - The utility only reads from Google Drive; it never changes or deletes
+    anything there.
+
+EXAMPLES
+  Export everything from Drive, decrypted:
+      node enotesmgr-export-cli.js -m on
+  Make a local encrypted copy (backup / for offline use):
+      node enotesmgr-export-cli.js -m on -x
+  Export from that copy later, offline:
+      node enotesmgr-export-cli.js -m off -c "eNotes Manager_20260110_0930/Config/config.json" -d "eNotes Manager_20260110_0930/Entries"
+  Then decrypt the sensitive notes it wrote:
+      node enotesmgr-export-cli.js -m sensitive -s "eNotes Manager Export_20260110_0945"
+`;
 
 // --- prompts -----------------------------------------------------------------
 // One shared readline interface with a persistent line queue. Using a fresh
@@ -127,8 +236,8 @@ function stamp() {
     const d = new Date();
     return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
 }
-function makeRootDir() {
-    const dir = `eNotes Manager Export_${stamp()}`;
+function makeRootDir(prefix = "eNotes Manager Export") {
+    const dir = `${prefix}_${stamp()}`;
     mkdirSync(dir, { recursive: true, mode: DIR_MODE });
     return dir;
 }
@@ -153,7 +262,19 @@ function writeNote(rootDir, noteName, content) {
     const { filename, bytes } = buildNoteExport(noteName, content);
     const out = uniquePath(rootDir, filename);
     writeFileSync(out, bytes, { mode: FILE_MODE });
+    if (isSensitiveContent(content)) sensitiveCount++;
     return out;
+}
+
+// Sensitive notes (an extra per-note password, see sensitive-notes.md) can only be
+// unlocked with the file password here: they are written still locked with
+// their note password, as "<name>.sensitive". Tell the user how to open them.
+let sensitiveCount = 0;
+function sensitiveHint(rootDir) {
+    if (!sensitiveCount) return;
+    console.log(`\n${sensitiveCount} sensitive note(s) were saved still locked with their own note password (*.sensitive).` +
+        `\nTo read them: node enotesmgr-export-cli.js -m sensitive -s "${rootDir}"` +
+        `\n(or open eNotesMgr on a PC, menu > 'Decrypt Sensitive File', pick the file and enter that note's password).`);
 }
 
 // --- Drive REST (online) -----------------------------------------------------
@@ -339,6 +460,7 @@ async function runOnline(args) {
             console.warn(`  SKIPPED ${e.name}: ${err.message}`);
         }
     }
+    sensitiveHint(rootDir);
 }
 
 // Replicate the entire 'eNotes Manager' Drive folder, as-is (still encrypted),
@@ -407,6 +529,56 @@ async function runOffline(args) {
             console.warn(`  SKIPPED ${basename(p)}: ${err.message}`);
         }
     }
+    sensitiveHint(rootDir);
+}
+
+// -m sensitive: decrypt "<name>.sensitive" files (or an older CLI's "<name>.html"
+// of a sensitive note) with each note's own password, exactly like the app's
+// "Decrypt Sensitive File" (same shared code, same output). Local only: no Drive,
+// no master password. The password is only ever typed at a hidden prompt, and
+// the decrypted content is never printed.
+async function runSensitive(args) {
+    const target = await resolvePath(args.s, "Path to a .sensitive file, or a folder of them: ", existsSync, "Not found");
+    const folder = statSync(target).isDirectory();
+    // A folder: its .sensitive files (and .html ones, which an older CLI wrote for
+    // sensitive notes); only files that really hold a sensitive note count.
+    const candidates = folder
+        ? readdirSync(target).filter((f) => /\.(sensitive|html?)$/i.test(f)).sort()
+            .map((f) => join(target, f)).filter((p) => statSync(p).isFile())
+        : [target];
+    const found = [];
+    for (const p of candidates) {
+        let payload = null;
+        try { payload = findSensitivePayload(readFileSync(p, "utf8")); } catch { /* unreadable */ }
+        if (payload) found.push({ p, payload });
+    }
+    if (!found.length) {
+        throw new Error(folder
+            ? `No sensitive notes (.sensitive files) found in '${target}'.`
+            : `'${basename(target)}' is not a sensitive note exported by eNotesMgr (a .sensitive file). ` +
+              "Note files of an '-m on -x' copy are still locked with your master password: export them with '-m off' first.");
+    }
+    console.log(`Found ${found.length} sensitive note(s). Enter each note's password (just Enter skips it).`);
+    let rootDir = null, done = 0;
+    const skipped = [];
+    for (const { p, payload } of found) {
+        const name = basename(p);
+        let content = null;
+        for (;;) {
+            const pwd = await promptHidden(`Password for '${name}' (Enter to skip): `);
+            if (!pwd) break;
+            try { content = decryptData(payload, pwd); break; } catch { console.log("  Wrong password - try again (or just Enter to skip)."); }
+        }
+        if (content === null) { skipped.push(name); console.log("  skipped " + name); continue; }
+        if (!rootDir) { rootDir = makeRootDir("eNotes Manager Sensitive"); console.log("Output directory: " + rootDir); }
+        const { filename, bytes } = buildNoteExport(sensitiveBaseName(name), content);
+        const out = uniquePath(rootDir, filename);
+        writeFileSync(out, bytes, { mode: FILE_MODE });
+        console.log("  saved " + out);
+        done++;
+    }
+    console.log(`\nDecrypted ${done} of ${found.length} sensitive note(s)` + (skipped.length ? `; skipped: ${skipped.join(", ")}` : "") + ".");
+    if (done) console.log("These files are NOT encrypted: delete them when you no longer need them.");
 }
 
 // Decrypt config.json with the master password -> file_password (shared by both
@@ -425,12 +597,17 @@ async function unlockFilePassword(configCipher) {
 // --- main --------------------------------------------------------------------
 async function main() {
     const args = parseArgs(process.argv.slice(2));
-    if (args.m !== "on" && args.m !== "off") usageExit("-m must be 'on' or 'off'.");
+    if (args.h) {
+        process.stdout.write(HELP);
+        return;
+    }
+    if (!["on", "off", "sensitive"].includes(args.m)) usageExit("-m must be 'on', 'off' or 'sensitive'.");
 
     await cryptoReady;
 
     if (args.m === "on") await runOnline(args);
-    else await runOffline(args);
+    else if (args.m === "off") await runOffline(args);
+    else await runSensitive(args);
 
     console.log("Done.");
 }

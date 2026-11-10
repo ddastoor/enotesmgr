@@ -10,6 +10,10 @@ For crypto operations {
 
     
 
+    Sensitive notes (two passwords) {
+        A sensitive note is encrypted twice: first with its own note password, then (with a marker in between) with the file password - decryption is the reverse. The note-password layer uses the verified encrypt below. See ./sensitive-notes.md.
+    }
+
     Verified encryption (self-check) {
         Provide a "verified encrypt" operation: encrypt the given text with the given password, then immediately decrypt that ciphertext back with the same password and confirm it reproduces the original text exactly. If the round-trip does NOT reproduce the original text (decryption errors out, or the decrypted text differs), the operation must FAIL (throw / signal an error) and return no ciphertext.
 

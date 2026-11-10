@@ -5,6 +5,8 @@
 // filename that should be written/downloaded. It only uses APIs available in both
 // browsers and Node 18+ (atob, TextEncoder, decodeURIComponent).
 
+import { isSensitiveContent, SENSITIVE_EXT } from "./sensitiveNote.js";
+
 // A note's type from its DECRYPTED content: ANY uploaded file is stored as a
 // data: URL (any MIME — image, audio, video, pdf, or an "UNKNOWN" upload);
 // everything else is rich-text HTML. So a leading "data:" marks an uploaded file.
@@ -92,8 +94,16 @@ function richTextToHtml(title, contentHtml) {
 //   - rich text  -> a standalone <name>.html rendering the note as the editor did.
 //   - uploaded file -> the original decoded bytes, under the note's own name
 //     (keeping its extension, or deriving one from the data: URL's MIME).
+//   - sensitive note still locked with its own note password (the export CLI
+//     only removes the file-password layer) -> written as-is to
+//     "<name>.sensitive"; the app's menu > "Decrypt Sensitive File" decrypts it.
+//     (The app's own Download passes the unlocked content, never this.)
 export function buildNoteExport(noteName, content) {
     const safe = sanitizeName(noteName);
+
+    if (isSensitiveContent(content)) {
+        return { filename: safe + SENSITIVE_EXT, bytes: utf8(content), mime: "application/octet-stream" };
+    }
 
     if (inferNoteType(content) === "richtext") {
         const filename = safe.toLowerCase().endsWith(".html") ? safe : safe + ".html";

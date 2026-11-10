@@ -4,8 +4,8 @@
 //   node tests/run-all.mjs                 # everything
 //   node tests/run-all.mjs --only crypto   # one suite (repeat --only for more)
 //
-// Suites: verify, crypto, cli, app-core, features, framing, password-rules,
-// recovery-lockout, data-safety, cli-roundtrip, google-signin, fonts. The browser suites run against the app in ./www served by
+// Suites: verify, crypto, cli, sensitive, cli-options, app-core, features, framing, password-rules,
+// recovery-lockout, data-safety, cli-roundtrip, sensitive-notes, cli-matrix, media-parity, new-user, google-signin, fonts. The browser suites run against the app in ./www served by
 // ./serve.py on a free local port, with Google sign-in stubbed and Google Drive
 // faked in memory - no real Google account is ever used.
 import { spawn, spawnSync } from "child_process";
@@ -24,6 +24,8 @@ const NODE_SUITES = [
     { name: "verify", desc: "export CLI bundle is up to date", args: [path.join(ROOT, "src/export/verify.mjs")] },
     { name: "crypto", desc: "crypto module", args: [path.join(TESTS, "crypto.test.mjs")] },
     { name: "cli", desc: "export CLI (vs. the original CLI)", args: [path.join(TESTS, "cli/run.mjs")] },
+    { name: "sensitive", desc: "sensitive notes: envelope, two layers, export rules, CLI", args: [path.join(TESTS, "sensitive.test.mjs")] },
+    { name: "cli-options", desc: "export CLI: every option combination x vaults with / without sensitive notes", args: [path.join(TESTS, "cli/options.mjs")] },
 ];
 const BROWSER_SUITES = [
     { name: "app-core", desc: "setup, unlock, notes, recovery, timeout, CSP, popup" },
@@ -33,6 +35,10 @@ const BROWSER_SUITES = [
     { name: "recovery-lockout", desc: "never locked out, complete code sets" },
     { name: "data-safety", desc: "Drive glitches / duplicates never lose data" },
     { name: "cli-roundtrip", desc: "export CLI exports data made by the current app" },
+    { name: "sensitive-notes", desc: "sensitive notes: extra password, CLI export, Decrypt Sensitive File" },
+    { name: "cli-matrix", desc: "every CLI mode x text / embedded images x normal / sensitive" },
+    { name: "media-parity", desc: "a sensitive note can do everything a normal note can" },
+    { name: "new-user", desc: "a new user: setup and normal use identical to main (before sensitive notes)" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
 ];

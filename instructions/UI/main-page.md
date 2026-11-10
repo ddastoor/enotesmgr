@@ -87,6 +87,7 @@ Main page {
 
                 File selector dropdown {
                     Lists all note entries from entries folder , sorted alphabetically.
+                    A note whose metadata has "Sensitive" = "yes" (see ../sensitive-notes.md) is listed as its name followed by a padlock " 🔒"; every other note is listed by its name only, as before.
                     Always keep this list sorted alphabetically even when notes are added or removed.
                     The first entry of the list ahould be a dummy entry "" that displays by default
                     On file selection {
@@ -119,6 +120,7 @@ Main page {
                     }
                     on click {
                         Re-fetch the currently selected note file from entries folder, decrypt it using the file password and display the contents in the rich text editor or media viewer depending on the type of file that was selected.
+                        For a sensitive note its note password is asked again first (see ../sensitive-notes.md 'Opening a sensitive note'); Cancel or a wrong password leaves the note on screen as it was.
                     }
                 }
 
@@ -213,9 +215,12 @@ Main page {
                     }
                     on click {
                         Download the currently loaded note to the user's device in UNENCRYPTED form, re-using the export utility's output logic so the downloaded file is identical to what that utility would write \(see ../../export-cli.md "Output rules"\) {
+                            if (the note is a sensitive note - see ../sensitive-notes.md) {
+                                First warn that the downloaded file will NOT be encrypted (anyone who gets it can read it) and ask OK / Cancel; Cancel downloads nothing.
+                            }
                             Obtain the note's decrypted content {
                                 if (it is a rich text note) { use the current on-screen rich text editor content (so any unsaved edits are included). }
-                                else (it is an uploaded file - image, audio, or any other type) { re-fetch the note file from the entries folder and decrypt it with the file password to get its content (a data: URL). }
+                                else (it is an uploaded file - image, audio, or any other type) { re-fetch the note file from the entries folder and decrypt it with the file password (and, for a sensitive note, then with its note password) to get its content (a data: URL). }
                             }
                             if (it is a rich text note) {
                                 Download a standalone '<note-name>.html' that renders the note exactly how the editor displayed it (the same html the export utility produces).
@@ -256,6 +261,28 @@ Main page {
                     }
                 }
 
+                Sensitive 'New' button {
+                    On both PC and mobile. Position: after the Rename button, followed by the sensitive 'Upload' button, then Delete.
+                    label: a padlock icon (inline SVG) followed by "New". Styled amber so it stands apart from the ordinary New button.
+                    tooltip: "Create a new SENSITIVE note (protected by an extra password of its own)"
+                    keyboard shortcut (PC): Alt+N - see ./keyboard-shortcuts.md
+                    on click {
+                        Create a new sensitive rich text note - see ../sensitive-notes.md 'Creating a sensitive note'. (The ordinary New button is unchanged.)
+                    }
+                }
+
+                Sensitive 'Upload' button {
+                    On both PC and mobile. Position: immediately to the right of the sensitive 'New' button.
+                    label: a padlock icon (inline SVG) followed by "↑U". Styled amber like the sensitive 'New' button.
+                    tooltip: "Upload a file as a SENSITIVE note (protected by an extra password of its own)"
+                    keyboard shortcut (PC): Alt+U - see ./keyboard-shortcuts.md
+                    on click {
+                        Upload a file as a new sensitive note - see ../sensitive-notes.md 'Creating a sensitive note'. (The ordinary Upload button is unchanged.)
+                    }
+                }
+
+                There is no way to turn an existing note into a sensitive note or back (a note is sensitive or not from its creation).
+
                 Delete button {
                     label: "Delete"
                     tooltip: "Delete the current note"
@@ -272,6 +299,8 @@ Main page {
             'load the note' functionality {
                 
                 Fetch the selected file from entries folder, decrypt the file using the file password.
+
+                If the result is a sensitive note's envelope, ask for its note password - every time the note is selected (file selector or search) - and decrypt with it as well (see ../sensitive-notes.md 'Opening a sensitive note'). If that prompt is cancelled or the password is wrong, abort: keep the note that is shown and put the file selector back on it. While a sensitive note is open the file selector shows it as "<name> 🔒".
 
                 See ./note-meta-data.md and use it to display the note in the app using the right display controls according to note meta data keys FileType and CreationMethod
 
@@ -312,6 +341,8 @@ Main page {
                     Update the actual note content.
 
                     Encrypt the current file (whether an audio, image, or rich text file) using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress.
+
+                    For a sensitive note the content is first encrypted with its note password, and that result with the file password - see ../sensitive-notes.md 'Saving a sensitive note'.
 
                     See ./note-meta-data.md for logic related to 'On Saving the note, just before encrypting the note file contents'
                 }

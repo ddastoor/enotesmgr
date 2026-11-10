@@ -17,6 +17,8 @@ UI { see ./UI/ui.md }
 
 Note meta data { see ./note-meta-data.md }
 
+Sensitive notes (optional extra per-note password) { see ./sensitive-notes.md }
+
 
 When a new user logs in:
     - see ./new-user-login.md   

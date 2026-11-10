@@ -184,6 +184,73 @@ export function showPrompt(message, { title = "", initial = "", placeholder = ""
     return result;
 }
 
+// Password dialog, used for sensitive notes' own passwords. Unlike showPrompt the
+// value is NOT trimmed (every character of a password counts). Options:
+//   confirm  - ask twice (a NEW password): both entries must match.
+//   validate - (pwd) => error message or null; an error keeps the dialog open.
+//   warning  - text shown in a highlighted box under the message.
+//   error    - pre-filled inline error (e.g. "Wrong password. Try again.").
+// Resolves with the password, or null if cancelled.
+export function showPasswordPrompt(message, {
+    title = "", okLabel = "OK", confirm = false, validate = null, warning = "", error = "",
+} = {}) {
+    const body = document.createElement("div");
+    body.className = "modal-text";
+    const label = document.createElement("div");
+    label.textContent = message;
+    label.style.marginBottom = "10px";
+    body.append(label);
+    if (warning) {
+        const warn = document.createElement("div");
+        warn.className = "modal-warning";
+        warn.textContent = warning;
+        body.append(warn);
+    }
+    const field = (placeholder) => {
+        const input = document.createElement("input");
+        input.type = "password";
+        // Keep browsers from filling in / offering to save the master password here.
+        input.autocomplete = confirm ? "new-password" : "off";
+        input.spellcheck = false;
+        input.className = "text-input pwd-input";
+        input.placeholder = placeholder;
+        body.append(input);
+        return input;
+    };
+    const pwd = field(confirm ? "New password" : "Password");
+    const pwd2 = confirm ? field("Re-enter the new password") : null;
+    const err = document.createElement("div");
+    err.className = "inline-error";
+    err.textContent = error;
+    body.append(err);
+
+    setTimeout(() => pwd.focus(), 0);
+
+    const submit = () => {
+        const v = pwd.value;
+        if (!v) { err.textContent = "Please enter a password."; return undefined; }
+        if (pwd2 && v !== pwd2.value) { err.textContent = "The two passwords don't match."; return undefined; }
+        const problem = validate ? validate(v) : null;
+        if (problem) { err.textContent = problem; return undefined; }
+        return v;
+    };
+    const result = buildModal({
+        title,
+        body,
+        buttons: [
+            { label: "Cancel", value: null, variant: "btn-tonal", isCancel: true },
+            { label: okLabel, variant: "btn-filled", onClick: submit },
+        ],
+    });
+    [pwd, pwd2].filter(Boolean).forEach((input) => input.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        if (pwd2 && input === pwd && !pwd2.value) { pwd2.focus(); return; }
+        input.closest(".modal-card").querySelectorAll(".modal-actions .btn")[1].click();
+    }));
+    return result;
+}
+
 // Yes / No / Cancel style confirm used for "save current note?" prompts.
 // Returns "yes", "no", or "cancel".
 export function showYesNo(message, title = "") {

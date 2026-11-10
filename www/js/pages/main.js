@@ -9,18 +9,27 @@ import {
     deleteFile,
     findChild,
 } from "../drive.js";
-import { encryptData, decryptData } from "../crypto/crypto.js";
-import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal } from "../lib/dialogs.js";
+import { encryptData, encryptVerified, decryptData } from "../crypto/crypto.js";
+import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal, showPasswordPrompt } from "../lib/dialogs.js";
 import { nowStamp } from "../lib/meta.js";
 import { detectFileType } from "../lib/fileType.js";
 import { buildNoteExport } from "../lib/noteExport.js";
 import { showNoteSearch } from "../lib/searchDialog.js";
+import { isSensitiveContent, wrapSensitive, unwrapSensitive } from "../lib/sensitiveNote.js";
 import { openMenu } from "./menu.js";
 
 // --- page-local state --------------------------------------------------------
 let entries = [];          // [{id, name}] sorted alphabetically
-let current = null;        // {id, name, meta} or null (dummy); see note-meta-data.md
+let current = null;        // {id, name, meta, sensitive, notePassword} or null (dummy); see note-meta-data.md
+// A sensitive note (see instructions/sensitive-notes.md) is sensitive from the
+// moment it is created and stays so. While it is the open note it has
+// sensitive: true and notePassword: its own extra password (needed to save it
+// again). The password is dropped when another note is opened and when the page
+// is left (teardown: settings, logout, session timeout).
 let dirty = false;
+// The dropdown value of the note that is actually on screen ("" = none). When
+// opening a sensitive note is aborted, the dropdown goes back to this.
+let shownSelection = "";
 // SHA-256 (hex) of the loaded note's content, used to skip a Save when the
 // content is unchanged. null when no richtext note is loaded. See
 // snapshotContentHash() / saveCurrentNote().
@@ -143,6 +152,8 @@ export function render(container) {
                 <button id="tb-download" class="btn btn-tonal" title="Download">↓D</button>
                 <button id="tb-save" class="btn btn-filled" title="Save the current note">Save</button>
                 <button id="tb-rename" class="btn btn-tonal" title="Rename the current note">Rename</button>
+                <button id="tb-new-sensitive" class="btn btn-tonal tb-sensitive" title="Create a new SENSITIVE note (protected by an extra password of its own)" aria-label="New sensitive note"><svg class="lock-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span>New</span></button>
+                <button id="tb-upload-sensitive" class="btn btn-tonal tb-sensitive" title="Upload a file as a SENSITIVE note (protected by an extra password of its own)" aria-label="Upload a sensitive file"><svg class="lock-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span>↑U</span></button>
                 <button id="tb-delete" class="btn btn-danger" title="Delete the current note">Delete</button>
             </section>
 
@@ -167,6 +178,7 @@ export function render(container) {
         </div>
 
         <input id="hidden-upload" type="file" hidden />
+        <input id="hidden-upload-sensitive" type="file" hidden />
         <input id="hidden-ins-image" type="file" accept="image/*" hidden />
         <input id="hidden-ins-audio" type="file" accept="audio/*" hidden />`;
 
@@ -186,6 +198,9 @@ export function render(container) {
     container.querySelector("#tb-download").addEventListener("click", onDownload);
     container.querySelector("#tb-save").addEventListener("click", onSave);
     container.querySelector("#tb-rename").addEventListener("click", onRename);
+    container.querySelector("#tb-new-sensitive").addEventListener("click", onNewSensitive);
+    container.querySelector("#tb-upload-sensitive").addEventListener("click", () =>
+        container.querySelector("#hidden-upload-sensitive").click());
     container.querySelector("#tb-delete").addEventListener("click", onDelete);
 
     container.querySelector("#file-select").addEventListener("change", onSelectChange);
@@ -238,6 +253,7 @@ export function render(container) {
 
     // Hidden file inputs
     container.querySelector("#hidden-upload").addEventListener("change", onUploadFile);
+    container.querySelector("#hidden-upload-sensitive").addEventListener("change", onUploadSensitiveFile);
     container.querySelector("#hidden-ins-image").addEventListener("change", onInsertImage);
     container.querySelector("#hidden-ins-audio").addEventListener("change", onInsertAudio);
 
@@ -251,6 +267,9 @@ export function render(container) {
 }
 
 export function teardown() {
+    // Leaving the main page (settings, recovery codes, logout, session timeout):
+    // forget the open sensitive note's password. Reopening it asks again.
+    if (current) current.notePassword = null;
     if (keydownHandler) {
         document.removeEventListener("keydown", keydownHandler);
         keydownHandler = null;
@@ -306,6 +325,16 @@ function onGlobalKeydown(e) {
         return;
     }
 
+    // Alt+N / Alt+U: like the sensitive (padlock) New / Upload buttons. Not in
+    // the editor: on a Mac, Option+N / Option+U type accents (ñ, ü) there.
+    // Matched on the physical key (e.code), since on a Mac e.key is the accent.
+    if (e.altKey && !ctrl && !e.shiftKey && (e.code === "KeyN" || e.code === "KeyU")) {
+        if (inEditor) return;
+        e.preventDefault();
+        clickToolbar(e.code === "KeyN" ? "tb-new-sensitive" : "tb-upload-sensitive");
+        return;
+    }
+
     // Remaining shortcuts: single keys, no Ctrl/Alt/Meta, and not in the editor.
     if (ctrl || e.altKey) return;
     if (inEditor) return;
@@ -331,6 +360,8 @@ function showShortcutsHelp() {
         ["Ctrl + S", "Save the current note"],
         ["N", "New note"],
         ["U", "Upload a file"],
+        ["Alt + N", "New sensitive note (extra password)"],
+        ["Alt + U", "Upload a file as a sensitive note"],
         ["R", "Rename the current note"],
         ["D", "Download the current note"],
         ["X", "Delete the current note"],
@@ -367,10 +398,16 @@ function rebuildSelect(selectedName = "") {
     entries.forEach((e) => {
         const opt = document.createElement("option");
         opt.value = e.name;
-        opt.textContent = e.name;
+        opt.textContent = optionLabel(e);
         sel.appendChild(opt);
     });
     sel.value = selectedName;
+    shownSelection = selectedName;
+}
+
+// A sensitive note is listed (and shown while open) as its name + a padlock.
+function optionLabel(e) {
+    return isMarkedSensitive(e.meta) ? `${e.name} \u{1F512}` : e.name;
 }
 
 async function refreshEntries(selectedName = "") {
@@ -414,16 +451,26 @@ async function onSelectChange(e) {
         savedContentHash = null;
         dirty = false;
         updateButtons();
+        shownSelection = "";
         return;
     }
     const entry = entries.find((x) => x.name === name);
-    if (entry) await loadNote(entry);
+    if (entry) {
+        const result = await loadNote(entry);
+        if (result === "shown") shownSelection = name;
+        // Opening a sensitive note was aborted (Cancel / wrong password): stay on
+        // the note that is on screen (if any), exactly as it was.
+        else if (result === "aborted") sel.value = shownSelection;
+    }
 }
 
 // Open the note-search dialog; if the user picks a note, select it in the
 // dropdown and run the normal file-selection flow.
 async function onSearch() {
-    const chosen = await showNoteSearch(entries.map((e) => e.name)); // entries are pre-sorted
+    const chosen = await showNoteSearch(
+        entries.map((e) => e.name), // entries are pre-sorted
+        new Set(entries.filter((e) => isMarkedSensitive(e.meta)).map((e) => e.name)), // listed with a padlock
+    );
     if (!chosen) return;
     const sel = document.getElementById("file-select");
     sel.value = chosen;
@@ -431,20 +478,46 @@ async function onSearch() {
 }
 
 // --- load / save -------------------------------------------------------------
+// Returns "shown", "failed" (error shown), or "aborted" (opening a sensitive
+// note was cancelled / its password was wrong / it was refused; the note that
+// was open stays exactly as it was).
+// A sensitive note asks for its password EVERY time it is loaded: selected in
+// the dropdown or via search (even the note already open), and on Refresh.
 async function loadNote(entry) {
     try {
-        const { meta, content } = await withStatus("Loading...", async () => {
+        const stored = await withStatus("Loading...", async () => {
             const cipher = await downloadText(entry.id);
-            const decrypted = decryptData(cipher, filePassword());
-            // Metadata comes from the file's appProperties; the decrypted file is
-            // pure content. Fall back to the legacy embedded-metadata layout for
-            // notes saved before this change (they have no appProperties).
-            if (entry.meta && entry.meta.FileType) {
-                return { meta: entry.meta, content: decrypted };
-            }
-            return parseNote(decrypted);
+            return decryptData(cipher, filePassword());
         });
-        current = { id: entry.id, name: entry.name, meta };
+        let decrypted = stored;
+        let notePassword = null;
+        if (isSensitiveContent(stored)) {
+            // A sensitive note is still locked with its own password: ask for it.
+            const unlocked = await unlockSensitive(entry.name, stored);
+            if (!unlocked) return "aborted";
+            ({ content: decrypted, password: notePassword } = unlocked);
+            // Always shown with its padlock while open (and remembered in its
+            // metadata from its next save on), even if the mark was missing.
+            if (entry.meta && entry.meta.FileType && !isMarkedSensitive(entry.meta)) {
+                entry.meta = { ...entry.meta, Sensitive: "yes" };
+                const opt = [...document.getElementById("file-select").options].find((o) => o.value === entry.name);
+                if (opt) opt.textContent = optionLabel(entry);
+            }
+        } else if (isMarkedSensitive(entry.meta)) {
+            // Created sensitive, but no longer locked with a note password: it was
+            // changed outside the app. Never show (and later save) it as a normal note.
+            await showAlert(`"${entry.name}" was created as a sensitive note, but it is no longer locked ` +
+                "with its note password - it may have been changed outside eNotesMgr. It was not opened.",
+                "Sensitive note");
+            return "aborted";
+        }
+        // Metadata comes from the file's appProperties; the decrypted file is
+        // pure content. Fall back to the legacy embedded-metadata layout for
+        // notes saved before this change (they have no appProperties).
+        const { meta, content } = entry.meta && entry.meta.FileType
+            ? { meta: entry.meta, content: decrypted }
+            : parseNote(decrypted);
+        current = { id: entry.id, name: entry.name, meta, sensitive: notePassword !== null, notePassword };
         displayNote(meta, content);
         if (isMediaType(meta)) savedContentHash = null;
         else await snapshotContentHash();
@@ -453,9 +526,11 @@ async function loadNote(entry) {
         // For a richtext note, put the caret in the editor so the user can type
         // right away.
         if (!isMediaType(meta)) document.getElementById("editor").focus();
+        return "shown";
     } catch (e) {
         console.error(e);
         await showAlert("Could not open this note.", "Error");
+        return "failed";
     }
 }
 
@@ -463,6 +538,164 @@ async function onRefresh() {
     if (!current) return;
     const entry = entries.find((x) => x.id === current.id);
     if (entry) await loadNote(entry);
+}
+
+// --- sensitive notes (see instructions/sensitive-notes.md) --------------------
+// Layers: content -> encrypted with the NOTE password (+ marker) -> encrypted
+// with the FILE password (like every note). Opening reverses that.
+
+// Ask for a sensitive note's password - once. Returns { content, password }, or
+// null if the user cancels or the password is wrong (the caller then aborts and
+// stays on the note that is open). `stored` is the note's text after the
+// file-password layer was removed.
+async function unlockSensitive(name, stored) {
+    const payload = unwrapSensitive(stored);
+    if (!payload) throw new Error("Malformed sensitive note");
+    const tryOpen = (pwd) => {
+        try { return decryptData(payload, pwd); } catch (_) { return null; }
+    };
+    const pwd = await showPasswordPrompt(`"${name}" is a sensitive note. Enter its password:`, {
+        title: "Sensitive note",
+        okLabel: "Unlock",
+    });
+    if (pwd === null) return null;
+    const content = await withStatus("Unlocking...", async () => tryOpen(pwd));
+    if (content !== null) return { content, password: pwd };
+    await flashStatus("Wrong password - the note was not opened.", 1500);
+    return null;
+}
+
+// What gets encrypted with the file password for `note`: its content as-is, or -
+// for a sensitive note - the content locked with the note's own password first
+// (verified: it must decrypt back, since nothing else can recover this layer).
+// Never falls back to the file password alone for a sensitive note.
+function sealContent(content, note) {
+    if (!note.sensitive) return content;
+    if (!note.notePassword) throw new Error("The sensitive note's password is not available");
+    return wrapSensitive(encryptVerified(content, note.notePassword));
+}
+
+// Re-fetch a sensitive uploaded note from Drive and return its actual content
+// (both layers removed). Used by Download, since an upload isn't kept on screen.
+async function fetchNoteContent(note) {
+    const stored = decryptData(await downloadText(note.id), filePassword());
+    return isSensitiveContent(stored)
+        ? decryptData(unwrapSensitive(stored), note.notePassword)
+        : stored;
+}
+
+// Sensitive note password rule (it is the only protection of a note exported by
+// the export utility, so it can't be trivially short).
+function validateNotePassword(pwd) {
+    return pwd.length < 8 ? "The password must be at least 8 characters long." : null;
+}
+
+// Whether a note's metadata says it was created sensitive (appProperty
+// Sensitive = "yes"; absent on every other note). Used for the dropdown mark;
+// whether a note is actually locked is decided by its content (the envelope).
+function isMarkedSensitive(meta) {
+    return !!(meta && meta.Sensitive === "yes");
+}
+
+// Ask for the new note's own password (twice). null if cancelled.
+function askNewNotePassword(name) {
+    return showPasswordPrompt(
+        `Choose an extra password for the sensitive note "${name}". It will be asked for every time this note is opened.`,
+        {
+            title: "New sensitive note",
+            okLabel: "Create",
+            confirm: true,
+            validate: validateNotePassword,
+            warning: "Keep this password safe: if you forget it, this note can NOT be recovered " +
+                "(recovery codes only restore your master password, not note passwords). " +
+                "A note is sensitive for its whole life: this can't be switched off later.",
+        });
+}
+
+// Create a sensitive note in Drive: the content is locked with the note
+// password, then encrypted with the file password like every note, so it is
+// never stored without the note password. Then show it like New / Upload do.
+async function createSensitiveNote(name, content, meta, notePassword, status) {
+    const created = await withStatus(status, async () => {
+        const cipher = encryptData(sealContent(content, { sensitive: true, notePassword }), filePassword());
+        return createTextFile(name, cipher, state.folders.entries, meta);
+    });
+    entries.push({ id: created.id, name, meta });
+    sortEntries();
+    rebuildSelect(name);
+    current = { id: created.id, name, meta, sensitive: true, notePassword };
+    displayNote(meta, content);
+    if (isMediaType(meta)) savedContentHash = null;
+    else await snapshotContentHash();
+    dirty = false;
+    updateButtons();
+    if (!isMediaType(meta)) document.getElementById("editor").focus();
+}
+
+// "New" sensitive rich text note: same as New, plus the note's own password.
+async function onNewSensitive() {
+    const entered = await showPrompt("Enter a name for the new sensitive note:", { title: "New sensitive note" });
+    if (!entered) return;
+    const name = stripExtension(entered.trim());
+    if (!name) return;
+    if (entries.some((e) => e.name === name)) {
+        await showAlert("Filename already exists", "Error");
+        return;
+    }
+    const notePassword = await askNewNotePassword(name);
+    if (notePassword === null) return;
+    if (current) {
+        const proceed = await maybeSaveBeforeSwitch();
+        if (!proceed) return;
+    }
+    try {
+        const stamp = nowStamp();
+        const meta = {
+            DateTimeCreated: stamp,
+            DateTimeModified: stamp,
+            CreationMethod: "new",
+            FileType: "richtext",
+            Sensitive: "yes",
+        };
+        await createSensitiveNote(name, "", meta, notePassword, "Creating...");
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not create the note.", "Error");
+    }
+}
+
+// "Upload" a file as a sensitive note: same as Upload, plus the note's own password.
+async function onUploadSensitiveFile(e) {
+    const file = e.target.files[0];
+    e.target.value = ""; // allow re-selecting same file later
+    if (!file) return;
+
+    const fileType = await detectFileType(file);
+    if (current) {
+        const proceed = await maybeSaveBeforeSwitch();
+        if (!proceed) return;
+    }
+    if (entries.some((x) => x.name === file.name)) {
+        await showAlert("Filename already exists", "Error");
+        return;
+    }
+    const notePassword = await askNewNotePassword(file.name);
+    if (notePassword === null) return;
+    try {
+        const dataUrl = await readFileAsDataURL(file);
+        const stamp = nowStamp();
+        const meta = {
+            DateTimeCreated: stamp,
+            DateTimeModified: stamp,
+            CreationMethod: "upload",
+            FileType: fileType,
+            Sensitive: "yes",
+        };
+        await createSensitiveNote(file.name, dataUrl, meta, notePassword, "Uploading...");
+    } catch (err) {
+        console.error(err);
+        await showAlert("Could not upload the file.", "Error");
+    }
 }
 
 // Returns true if it actually wrote to Drive, false if it was a no-op
@@ -481,7 +714,8 @@ async function saveCurrentNote() {
     // (appProperties) with a refreshed DateTimeModified.
     const meta = { ...current.meta, DateTimeModified: nowStamp() };
     await withStatus("Saving...", async () => {
-        const cipher = encryptData(content, filePassword());
+        // (A sensitive note is locked with its own password first.)
+        const cipher = encryptData(sealContent(content, current), filePassword());
         await updateTextFile(current.id, cipher, meta);
     });
     current.meta = meta;
@@ -608,12 +842,18 @@ async function onUploadFile(e) {
 // decoded back to its original bytes under its own name.
 async function onDownload() {
     if (!current) return;
+    // A sensitive note downloads unlocked (it is open), so check first.
+    if (current.sensitive && !(await showConfirm(
+        `"${current.name}" is a sensitive note. The downloaded file will NOT be encrypted: ` +
+        "anyone who gets hold of it can read it. Download anyway?", "Download sensitive note"))) return;
     try {
         // Get the note's decrypted content. Rich text comes from the editor (so
         // any on-screen edits are included); an uploaded file (image/audio/other)
         // can't be edited, so re-fetch + decrypt its stored data: URL.
         let content;
-        if (isMediaType(current.meta)) {
+        if (isMediaType(current.meta) && current.sensitive) {
+            content = await withStatus("Preparing download...", () => fetchNoteContent(current));
+        } else if (isMediaType(current.meta)) {
             content = await withStatus("Preparing download...", async () =>
                 decryptData(await downloadText(current.id), filePassword()));
         } else {

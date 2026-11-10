@@ -27,6 +27,7 @@ Note search popup {
 
         Note entries list {
             Contents: all note entry names from the entries folder, EXCEPT the dummy "" entry, sorted alphabetically. Keep it alphabetical.
+            A sensitive note (see ../sensitive-notes.md) is listed as its name followed by a padlock " 🔒" - exactly the notes the file selector shows with a padlock. The padlock is not part of the name: filtering matches the name only, and selecting the entry returns the plain name.
             It is a scrollable vertical list. One entry is the "highlighted" (active) entry at a time, shown with a clear highlight.
             After every (re)filter, the highlight defaults to the first entry in the (filtered) list.
             If nothing matches the current search text, show a "No matching notes" message instead of the list items.

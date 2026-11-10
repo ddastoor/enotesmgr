@@ -13,6 +13,8 @@ Keyboard shortcuts help popup {
             "Ctrl + S"         ->  "Save the current note"
             "N"                ->  "New note"
             "U"                ->  "Upload a file"
+            "Alt + N"          ->  "New sensitive note (extra password)"
+            "Alt + U"          ->  "Upload a file as a sensitive note"
             "R"                ->  "Rename the current note"
             "D"                ->  "Download the current note"
             "X"                ->  "Delete the current note"
