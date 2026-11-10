@@ -178,7 +178,7 @@ function cli(cliPath, args, input, driveFile) {
         "neither the file password nor the master password opens the inner layer");
     ok(fileByName("bank").appProperties.Sensitive === "yes", "Sensitive=yes kept on save");
 
-    console.log("3. Selecting a sensitive note (dropdown / search) asks for its password every time");
+    console.log("3. Opening a sensitive note (dropdown / search / Refresh) asks for its password every time");
     const selectedLabel = () => page.$eval("#file-select", (s) => s.options[s.selectedIndex].textContent);
     const searchPick = async (q) => {
         await page.click("#tb-search");
@@ -218,8 +218,15 @@ function cli(cliPath, args, input, driveFile) {
     await clickModal(page, "save the current note", "No"); // the usual unsaved-changes prompt comes first
     await abortOpen("WrongPass9", false);
     ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret DRAFT"), "... and a wrong password there keeps the unsaved edits on screen");
-    await page.click("#tb-refresh"); await status(); // drop the draft (Refresh reloads the saved note)
-    ok(await unlockModal().count() === 0 && !(await editorText()).includes("DRAFT"), "Refresh of the open note doesn't ask again");
+    // Refresh of the open sensitive note asks for its password too.
+    await page.click("#tb-refresh"); await abortOpen("cancel", false);
+    ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret DRAFT"), "Refresh asks for the password; Cancel keeps the note as it was (draft included)");
+    await page.click("#tb-refresh"); await abortOpen("WrongPass9", false);
+    ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret DRAFT"), "Refresh + wrong password: aborted, note kept as it was");
+    await page.click("#tb-refresh");
+    await unlockModal().waitFor(); await fillPw(unlockModal(), NOTE_PW); await clickModal(page, "is a sensitive note", "Unlock"); await status();
+    ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret") && !(await editorText()).includes("DRAFT"),
+        "Refresh + right password: reloads the saved note (the unsaved draft is dropped, as Refresh always does)");
     await open("plain");
     await searchPick("ban");
     await unlockModal().waitFor(); await fillPw(unlockModal(), NOTE_PW); await clickModal(page, "is a sensitive note", "Unlock"); await status();
@@ -233,8 +240,9 @@ function cli(cliPath, args, input, driveFile) {
     await page.waitForSelector(".status-overlay .status-text:text('Nothing to save..')");
     await status();
     ok(true, "unchanged content: 'Nothing to save..' (no write)");
-    await page.click("#tb-refresh"); await status();
-    ok(await unlockModal().count() === 0 && (await editorText()).includes("EDIT1"), "Refresh reloads without asking again");
+    await page.click("#tb-refresh");
+    await unlockModal().waitFor(); await fillPw(unlockModal(), NOTE_PW); await clickModal(page, "is a sensitive note", "Unlock"); await status();
+    ok((await editorText()).includes("EDIT1"), "Refresh (with the password) shows the saved edit");
     await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type(" EDIT2");
     await page.selectOption("#file-select", "plain");
     await clickModal(page, "save the current note", "Yes"); await status();

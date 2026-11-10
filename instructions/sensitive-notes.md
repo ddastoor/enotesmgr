@@ -35,7 +35,7 @@ Sensitive notes (an optional extra per-note password, chosen when the note is cr
 
         The marker can never start an ordinary note: rich text is the editor's html (a "<" typed as text is stored as "&lt;"), uploads are data: URLs and legacy notes start with "[metadata begin]".
 
-        The note password itself is never stored anywhere. While a sensitive note is the open note, the app holds its password in memory (it is needed to save the note again); it is dropped when another note is opened, when the main page is left (settings, recovery codes) and on logout / session timeout. Only the Refresh button (reloading the note already on screen) reuses the held password.
+        The note password itself is never stored anywhere. While a sensitive note is the open note, the app holds its password in memory (it is needed to save the note again); it is dropped when another note is opened, when the main page is left (settings, recovery codes) and on logout / session timeout. The held password is only used to save the note and for its Download (after the warning) - it never opens a note: opening, including Refresh, always asks.
     }
 
     Note password rules {
@@ -48,11 +48,11 @@ Sensitive notes (an optional extra per-note password, chosen when the note is cr
         The note's metadata is the usual set (DateTimeCreated, DateTimeModified, CreationMethod "new" / "upload", FileType) plus "Sensitive" = "yes". It is written already locked with both passwords.
     }
 
-    Opening a sensitive note (selecting it in the file selector or via search) {
+    Opening a sensitive note (selecting it in the file selector or via search, or pressing Refresh while it is open) {
         EVERY time - even if it is the note already open - ask "<name> is a sensitive note. Enter its password", once. Nothing of the note is shown before the right password is entered.
         If the user presses Cancel, or the password is wrong (a short "Wrong password - the note was not opened." message is flashed), abort: stay on the note that is currently shown (if any), exactly as it was (unsaved edits included), and put the file selector back on it (or on the empty entry if no note is shown). To try again the user selects the note again.
         (The usual "save the current note?" prompt still comes first when the current note has unsaved changes.)
-        Refresh of the sensitive note already on screen reloads it without asking (its password is held while it is open).
+        Refresh asks too: Cancel or a wrong password leaves the note on screen exactly as it was (unsaved edits included); the right password reloads it.
     }
 
     Saving a sensitive note {

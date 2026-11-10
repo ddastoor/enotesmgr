@@ -466,10 +466,9 @@ async function onSearch() {
 // Returns "shown", "failed" (error shown), or "aborted" (opening a sensitive
 // note was cancelled / its password was wrong / it was refused; the note that
 // was open stays exactly as it was).
-// knownPassword: only Refresh passes it - the open sensitive note's password, so
-// refreshing the note already on screen doesn't ask again. Selecting a note
-// (dropdown or search) never does: a sensitive note asks every time.
-async function loadNote(entry, knownPassword = null) {
+// A sensitive note asks for its password EVERY time it is loaded: selected in
+// the dropdown or via search (even the note already open), and on Refresh.
+async function loadNote(entry) {
     try {
         const stored = await withStatus("Loading...", async () => {
             const cipher = await downloadText(entry.id);
@@ -479,7 +478,7 @@ async function loadNote(entry, knownPassword = null) {
         let notePassword = null;
         if (isSensitiveContent(stored)) {
             // A sensitive note is still locked with its own password: ask for it.
-            const unlocked = await unlockSensitive(entry.name, stored, knownPassword);
+            const unlocked = await unlockSensitive(entry.name, stored);
             if (!unlocked) return "aborted";
             ({ content: decrypted, password: notePassword } = unlocked);
             // Always shown with its padlock while open (and remembered in its
@@ -523,7 +522,7 @@ async function loadNote(entry, knownPassword = null) {
 async function onRefresh() {
     if (!current) return;
     const entry = entries.find((x) => x.id === current.id);
-    if (entry) await loadNote(entry, current.sensitive ? current.notePassword : null);
+    if (entry) await loadNote(entry);
 }
 
 // --- sensitive notes (see instructions/sensitive-notes.md) --------------------
@@ -534,16 +533,12 @@ async function onRefresh() {
 // null if the user cancels or the password is wrong (the caller then aborts and
 // stays on the note that is open). `stored` is the note's text after the
 // file-password layer was removed.
-async function unlockSensitive(name, stored, knownPassword) {
+async function unlockSensitive(name, stored) {
     const payload = unwrapSensitive(stored);
     if (!payload) throw new Error("Malformed sensitive note");
     const tryOpen = (pwd) => {
         try { return decryptData(payload, pwd); } catch (_) { return null; }
     };
-    if (knownPassword) {
-        const content = await withStatus("Unlocking...", async () => tryOpen(knownPassword));
-        if (content !== null) return { content, password: knownPassword };
-    }
     const pwd = await showPasswordPrompt(`"${name}" is a sensitive note. Enter its password:`, {
         title: "Sensitive note",
         okLabel: "Unlock",

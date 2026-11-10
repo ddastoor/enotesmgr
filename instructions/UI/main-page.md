@@ -120,6 +120,7 @@ Main page {
                     }
                     on click {
                         Re-fetch the currently selected note file from entries folder, decrypt it using the file password and display the contents in the rich text editor or media viewer depending on the type of file that was selected.
+                        For a sensitive note its note password is asked again first (see ../sensitive-notes.md 'Opening a sensitive note'); Cancel or a wrong password leaves the note on screen as it was.
                     }
                 }
 
