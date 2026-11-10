@@ -28,9 +28,14 @@ Sensitive notes (an optional extra per-note password, chosen when the note is cr
         1. Its metadata: the appProperty "Sensitive" = "yes" (see ./note-meta-data.md), written when the note is created and kept on every save. Only sensitive notes have this key. The app uses it to mark the note in the file selector (its name followed by a padlock 🔒), before the note is opened.
         2. Its content: the sensitive envelope inside the file-password layer. This is what decides how the note is decrypted, saved and exported - the export CLI's offline mode has no Drive metadata, and the envelope sits inside authenticated encryption, so it can't be forged or removed by someone who can only edit the Drive file.
 
+        The two must agree {
+            - While a sensitive note is open it is ALWAYS shown with its padlock (the file selector shows "<name> 🔒"). If its content is an envelope but the "Sensitive" key is missing, the padlock is shown anyway and the key is written back on the note's next save.
+            - A note whose metadata says "Sensitive" = "yes" but whose content is NOT an envelope (it was changed outside the app) is never opened as a normal note (and so can never be saved unprotected): the app says so and stays on the current note.
+        }
+
         The marker can never start an ordinary note: rich text is the editor's html (a "<" typed as text is stored as "&lt;"), uploads are data: URLs and legacy notes start with "[metadata begin]".
 
-        The note password itself is never stored anywhere. While a sensitive note is the open note, the app holds its password in memory (it is needed to save the note again); it is dropped when another note is opened, when the main page is left (settings, recovery codes) and on logout / session timeout. Reopening the note then asks again. Reloading the open note (Refresh, or picking it again via search) reuses the held password.
+        The note password itself is never stored anywhere. While a sensitive note is the open note, the app holds its password in memory (it is needed to save the note again); it is dropped when another note is opened, when the main page is left (settings, recovery codes) and on logout / session timeout. Only the Refresh button (reloading the note already on screen) reuses the held password.
     }
 
     Note password rules {
@@ -43,8 +48,11 @@ Sensitive notes (an optional extra per-note password, chosen when the note is cr
         The note's metadata is the usual set (DateTimeCreated, DateTimeModified, CreationMethod "new" / "upload", FileType) plus "Sensitive" = "yes". It is written already locked with both passwords.
     }
 
-    Opening a sensitive note {
-        After the file-password layer is removed and the envelope is found, ask "<name> is a sensitive note. Enter its password". A wrong password asks again with "Wrong password. Try again.". Cancel keeps the previously open note (the file selector goes back to it).
+    Opening a sensitive note (selecting it in the file selector or via search) {
+        EVERY time - even if it is the note already open - ask "<name> is a sensitive note. Enter its password", once. Nothing of the note is shown before the right password is entered.
+        If the user presses Cancel, or the password is wrong (a short "Wrong password - the note was not opened." message is flashed), abort: stay on the note that is currently shown (if any), exactly as it was (unsaved edits included), and put the file selector back on it (or on the empty entry if no note is shown). To try again the user selects the note again.
+        (The usual "save the current note?" prompt still comes first when the current note has unsaved changes.)
+        Refresh of the sensitive note already on screen reloads it without asking (its password is held while it is open).
     }
 
     Saving a sensitive note {

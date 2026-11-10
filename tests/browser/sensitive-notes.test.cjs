@@ -178,29 +178,52 @@ function cli(cliPath, args, input, driveFile) {
         "neither the file password nor the master password opens the inner layer");
     ok(fileByName("bank").appProperties.Sensitive === "yes", "Sensitive=yes kept on save");
 
-    console.log("3. Opening a sensitive note asks for its password");
+    console.log("3. Selecting a sensitive note (dropdown / search) asks for its password every time");
+    const selectedLabel = () => page.$eval("#file-select", (s) => s.options[s.selectedIndex].textContent);
+    const searchPick = async (q) => {
+        await page.click("#tb-search");
+        await page.fill(".search-input", q); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter");
+    };
+    // `how`: "cancel" | a wrong password; the note must then NOT be shown.
+    // checkHidden: the note being opened isn't already on screen.
+    const abortOpen = async (how, checkHidden = true) => {
+        await unlockModal().waitFor();
+        if (checkHidden) ok(!(await editorText()).includes("PIN 4242"), "  nothing of the sensitive note is shown while its password is asked");
+        if (how === "cancel") await clickModal(page, "is a sensitive note", "Cancel");
+        else {
+            await fillPw(unlockModal(), how); await clickModal(page, "is a sensitive note", "Unlock");
+            await page.waitForSelector(".status-overlay .status-text:text('Wrong password')");
+        }
+        await status();
+        await page.waitForTimeout(200);
+        ok(await unlockModal().count() === 0, "  no second password prompt");
+    };
     await open("plain");
-    await page.selectOption("#file-select", "bank");
-    await unlockModal().waitFor();
-    await clickModal(page, "is a sensitive note", "Cancel");
-    await status();
-    ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "Cancel: stays on the previous note");
-    await page.selectOption("#file-select", "bank");
-    await unlockModal().waitFor();
-    await fillPw(unlockModal(), "WrongPass9");
-    await clickModal(page, "is a sensitive note", "Unlock");
-    await status();
-    await unlockModal().waitFor();
-    ok((await unlockModal().locator(".inline-error").textContent()).includes("Wrong password"), "wrong password: asked again with an error");
-    await fillPw(unlockModal(), NOTE_PW);
-    await clickModal(page, "is a sensitive note", "Unlock");
-    await status();
+    await page.selectOption("#file-select", "bank"); await abortOpen("cancel");
+    ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "dropdown + Cancel: aborted, stays on the current note");
+    await page.selectOption("#file-select", "bank"); await abortOpen("WrongPass9");
+    ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "dropdown + wrong password: aborted ('Wrong password' flash), stays on the current note");
+    await searchPick("ban"); await abortOpen("cancel");
+    ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "search + Cancel: aborted, stays on the current note");
+    await searchPick("ban"); await abortOpen("WrongPass9");
+    ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "search + wrong password: aborted, stays on the current note");
+    await open("bank", NOTE_PW);
     ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret"), "right password: the note opens");
-    await page.click("#tb-search");
-    await page.fill(".search-input", "ban"); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter");
-    await status(); await page.waitForTimeout(300);
-    ok(await unlockModal().count() === 0 && await sel() === "bank" && (await editorText()).includes("PIN 4242"),
-        "picking the open note again via Search reloads it without asking again");
+    ok(await selectedLabel() === "bank" + LOCK, "while it is open the selector shows 'bank 🔒'");
+    await searchPick("ban"); await abortOpen("cancel", false);
+    ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret") && await selectedLabel() === "bank" + LOCK,
+        "picking the open sensitive note again via Search asks again; Cancel keeps it as it was");
+    await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type(" DRAFT");
+    await searchPick("ban");
+    await clickModal(page, "save the current note", "No"); // the usual unsaved-changes prompt comes first
+    await abortOpen("WrongPass9", false);
+    ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret DRAFT"), "... and a wrong password there keeps the unsaved edits on screen");
+    await page.click("#tb-refresh"); await status(); // drop the draft (Refresh reloads the saved note)
+    ok(await unlockModal().count() === 0 && !(await editorText()).includes("DRAFT"), "Refresh of the open note doesn't ask again");
+    await open("plain");
+    await searchPick("ban");
+    await unlockModal().waitFor(); await fillPw(unlockModal(), NOTE_PW); await clickModal(page, "is a sensitive note", "Unlock"); await status();
+    ok(await sel() === "bank" && (await editorText()).includes("PIN 4242 secret"), "search + right password: the note opens");
 
     console.log("4. Save / refresh / unsaved-changes prompt keep both layers");
     await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type(" EDIT1");
@@ -231,6 +254,8 @@ function cli(cliPath, args, input, driveFile) {
     console.log("6. The note password is forgotten when the main page is left");
     await page.click("#btn-settings"); await page.click("#set-cancel");
     await page.waitForSelector("#file-select"); await status();
+    await page.selectOption("#file-select", "bank"); await abortOpen("cancel");
+    ok(await sel() === "" && (await editorText()) === "", "back from Settings (no note shown): an aborted open leaves no note selected");
     // Whatever Save does in this state, a sensitive note is never rewritten
     // without its note password (its password was dropped on leaving the page).
     const bankStored = fileByName("bank").content;
@@ -353,7 +378,29 @@ function cli(cliPath, args, input, driveFile) {
     ok(driveLog.length === callsBefore, "the tool made no Google Drive calls at all");
     ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "the open note is unaffected by the tool");
 
-    console.log("11. Mobile: padlock buttons work, the PC-only tool is not offered");
+    console.log("11. The padlock always shows while a sensitive note is open; tampering is refused");
+    await open("plain");
+    // A sensitive note whose 'Sensitive' metadata is missing (e.g. made by an
+    // earlier test build): still asks for its password, shows the padlock while
+    // open, and gets its metadata back on its next save.
+    delete fileByName("diary").appProperties.Sensitive;
+    await logout(page); await login(page); await unlockInput(page, "Master123"); await onMain(page);
+    ok(await optionText("diary") === "diary", "metadata mark missing: listed without the padlock before it is opened");
+    await open("diary", "DiaryPass1");
+    ok(await selectedLabel() === "diary" + LOCK && (await editorText()).includes("dear diary"), "opened with its password: shown as 'diary 🔒'");
+    await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type("!"); await page.click("#tb-save"); await status();
+    ok(fileByName("diary").appProperties.Sensitive === "yes" && (inner("diary", "DiaryPass1") || "").includes("dear diary!"), "its next save stores Sensitive=yes again (still locked)");
+    // A note created sensitive whose content was replaced by an unlocked one
+    // (outside the app) is never shown or saved as a normal note.
+    await open("plain");
+    const realBank = fileByName("bank").content;
+    fileByName("bank").content = C.encryptData("<div>fake</div>", FP);
+    await page.selectOption("#file-select", "bank");
+    await clickModal(page, "no longer locked", "OK"); await status();
+    ok(await sel() === "plain" && (await editorText()).includes("nothing secret"), "created sensitive but no longer locked: refused, stays on the current note");
+    fileByName("bank").content = realBank;
+
+    console.log("12. Mobile: padlock buttons work, the PC-only tool is not offered");
     const mob = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await login(mob); await unlockInput(mob, "Master123"); await onMain(mob);
     ok(await mob.isVisible("#tb-new-sensitive") && await mob.isVisible("#tb-upload-sensitive"), "mobile: padlock New / Upload buttons shown");
@@ -367,7 +414,7 @@ function cli(cliPath, args, input, driveFile) {
     await mob.waitForSelector(".drawer");
     ok(await mob.locator('[data-action="decrypt-sensitive"]').count() === 0, "mobile: no 'Decrypt Sensitive File' in the menu");
 
-    console.log("12. Existing / ordinary notes were never touched");
+    console.log("13. Existing / ordinary notes were never touched");
     ok(snapshot(ordinary) === ordinaryBefore, "plain and doc.pdf: Drive id, name, content and metadata byte-for-byte unchanged after everything above");
 
     await browser.close();

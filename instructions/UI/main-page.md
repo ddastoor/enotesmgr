@@ -297,7 +297,7 @@ Main page {
                 
                 Fetch the selected file from entries folder, decrypt the file using the file password.
 
-                If the result is a sensitive note's envelope, ask for its note password and decrypt with it as well (see ../sensitive-notes.md 'Opening a sensitive note'). If that prompt is cancelled, keep the previously loaded note and put the file selector back on it.
+                If the result is a sensitive note's envelope, ask for its note password - every time the note is selected (file selector or search) - and decrypt with it as well (see ../sensitive-notes.md 'Opening a sensitive note'). If that prompt is cancelled or the password is wrong, abort: keep the note that is shown and put the file selector back on it. While a sensitive note is open the file selector shows it as "<name> 🔒".
 
                 See ./note-meta-data.md and use it to display the note in the app using the right display controls according to note meta data keys FileType and CreationMethod
 

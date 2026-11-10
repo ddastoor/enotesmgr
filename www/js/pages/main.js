@@ -27,6 +27,9 @@ let current = null;        // {id, name, meta, sensitive, notePassword} or null 
 // again). The password is dropped when another note is opened and when the page
 // is left (teardown: settings, logout, session timeout).
 let dirty = false;
+// The dropdown value of the note that is actually on screen ("" = none). When
+// opening a sensitive note is aborted, the dropdown goes back to this.
+let shownSelection = "";
 // SHA-256 (hex) of the loaded note's content, used to skip a Save when the
 // content is unchanged. null when no richtext note is loaded. See
 // snapshotContentHash() / saveCurrentNote().
@@ -383,11 +386,16 @@ function rebuildSelect(selectedName = "") {
     entries.forEach((e) => {
         const opt = document.createElement("option");
         opt.value = e.name;
-        // A note created sensitive is remembered in its metadata: mark it.
-        opt.textContent = isMarkedSensitive(e.meta) ? `${e.name} \u{1F512}` : e.name;
+        opt.textContent = optionLabel(e);
         sel.appendChild(opt);
     });
     sel.value = selectedName;
+    shownSelection = selectedName;
+}
+
+// A sensitive note is listed (and shown while open) as its name + a padlock.
+function optionLabel(e) {
+    return isMarkedSensitive(e.meta) ? `${e.name} \u{1F512}` : e.name;
 }
 
 async function refreshEntries(selectedName = "") {
@@ -431,12 +439,16 @@ async function onSelectChange(e) {
         savedContentHash = null;
         dirty = false;
         updateButtons();
+        shownSelection = "";
         return;
     }
     const entry = entries.find((x) => x.name === name);
     if (entry) {
-        // Cancelled a sensitive note's password prompt: stay on the previous note.
-        if ((await loadNote(entry)) === "cancelled") sel.value = current ? current.name : "";
+        const result = await loadNote(entry);
+        if (result === "shown") shownSelection = name;
+        // Opening a sensitive note was aborted (Cancel / wrong password): stay on
+        // the note that is on screen (if any), exactly as it was.
+        else if (result === "aborted") sel.value = shownSelection;
     }
 }
 
@@ -451,24 +463,39 @@ async function onSearch() {
 }
 
 // --- load / save -------------------------------------------------------------
-// Returns "shown", "failed" (error shown), or "cancelled" (the user cancelled a
-// sensitive note's password prompt; the previously open note stays as it was).
-async function loadNote(entry) {
-    // Reloading the open sensitive note (Refresh, or picking it again via
-    // search): try the password we hold first so the user isn't asked again.
-    const knownPassword = current && current.id === entry.id && current.sensitive ? current.notePassword : null;
+// Returns "shown", "failed" (error shown), or "aborted" (opening a sensitive
+// note was cancelled / its password was wrong / it was refused; the note that
+// was open stays exactly as it was).
+// knownPassword: only Refresh passes it - the open sensitive note's password, so
+// refreshing the note already on screen doesn't ask again. Selecting a note
+// (dropdown or search) never does: a sensitive note asks every time.
+async function loadNote(entry, knownPassword = null) {
     try {
         const stored = await withStatus("Loading...", async () => {
             const cipher = await downloadText(entry.id);
             return decryptData(cipher, filePassword());
         });
-        // A sensitive note is still locked with its own password: ask for it.
         let decrypted = stored;
         let notePassword = null;
         if (isSensitiveContent(stored)) {
+            // A sensitive note is still locked with its own password: ask for it.
             const unlocked = await unlockSensitive(entry.name, stored, knownPassword);
-            if (!unlocked) return "cancelled";
+            if (!unlocked) return "aborted";
             ({ content: decrypted, password: notePassword } = unlocked);
+            // Always shown with its padlock while open (and remembered in its
+            // metadata from its next save on), even if the mark was missing.
+            if (entry.meta && entry.meta.FileType && !isMarkedSensitive(entry.meta)) {
+                entry.meta = { ...entry.meta, Sensitive: "yes" };
+                const opt = [...document.getElementById("file-select").options].find((o) => o.value === entry.name);
+                if (opt) opt.textContent = optionLabel(entry);
+            }
+        } else if (isMarkedSensitive(entry.meta)) {
+            // Created sensitive, but no longer locked with a note password: it was
+            // changed outside the app. Never show (and later save) it as a normal note.
+            await showAlert(`"${entry.name}" was created as a sensitive note, but it is no longer locked ` +
+                "with its note password - it may have been changed outside eNotesMgr. It was not opened.",
+                "Sensitive note");
+            return "aborted";
         }
         // Metadata comes from the file's appProperties; the decrypted file is
         // pure content. Fall back to the legacy embedded-metadata layout for
@@ -496,15 +523,16 @@ async function loadNote(entry) {
 async function onRefresh() {
     if (!current) return;
     const entry = entries.find((x) => x.id === current.id);
-    if (entry) await loadNote(entry);
+    if (entry) await loadNote(entry, current.sensitive ? current.notePassword : null);
 }
 
 // --- sensitive notes (see instructions/sensitive-notes.md) --------------------
 // Layers: content -> encrypted with the NOTE password (+ marker) -> encrypted
 // with the FILE password (like every note). Opening reverses that.
 
-// Ask for a sensitive note's password until it opens the note; null if the user
-// cancels. Returns { content, password }. `stored` is the note's text after the
+// Ask for a sensitive note's password - once. Returns { content, password }, or
+// null if the user cancels or the password is wrong (the caller then aborts and
+// stays on the note that is open). `stored` is the note's text after the
 // file-password layer was removed.
 async function unlockSensitive(name, stored, knownPassword) {
     const payload = unwrapSensitive(stored);
@@ -516,18 +544,15 @@ async function unlockSensitive(name, stored, knownPassword) {
         const content = await withStatus("Unlocking...", async () => tryOpen(knownPassword));
         if (content !== null) return { content, password: knownPassword };
     }
-    let error = "";
-    for (;;) {
-        const pwd = await showPasswordPrompt(`"${name}" is a sensitive note. Enter its password:`, {
-            title: "Sensitive note",
-            okLabel: "Unlock",
-            error,
-        });
-        if (pwd === null) return null;
-        const content = await withStatus("Unlocking...", async () => tryOpen(pwd));
-        if (content !== null) return { content, password: pwd };
-        error = "Wrong password. Try again.";
-    }
+    const pwd = await showPasswordPrompt(`"${name}" is a sensitive note. Enter its password:`, {
+        title: "Sensitive note",
+        okLabel: "Unlock",
+    });
+    if (pwd === null) return null;
+    const content = await withStatus("Unlocking...", async () => tryOpen(pwd));
+    if (content !== null) return { content, password: pwd };
+    await flashStatus("Wrong password - the note was not opened.", 1500);
+    return null;
 }
 
 // What gets encrypted with the file password for `note`: its content as-is, or -
