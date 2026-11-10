@@ -107,13 +107,18 @@ Master password page {
                                 if (decryption fails) { it's a decryption failure (see below). }
                             }
                             else if (there is more than one config.json) {
-                                Try to decrypt each config.json copy with the master password, and pick the single copy that decrypts successfully.
-                                if (one of them decrypts) {
-                                    Use that decrypted copy as the config json, KEEP that copy, and DELETE all the other config.json copies (so only the genuine one survives).
-                                }
-                                else (none of them decrypt) {
+                                Careful: one of the copies may be the ONLY key to the user's notes (see ../data-storage.md "Never lose existing data").
+                                Try to decrypt each config.json copy with the master password.
+                                if (none of them decrypt) {
                                     Treat it as a decryption failure and DELETE NOTHING (it is likely just a wrong master password, so we must not destroy any copy).
                                 }
+                                else {
+                                    Of the copies that decrypt, use the one whose file password opens the existing notes (try up to 5 notes); if that doesn't decide it, the oldest (DateTimeCreated); else the first.
+                                    DELETE only exact duplicates of it (copies that decrypt to the SAME file password). NEVER delete a copy that doesn't decrypt with this master password, or that holds a different file password.
+                                }
+                            }
+                            if (there is no config.json at all) {
+                                Display "Your config file is missing. Enter one of your recovery codes to restore access to your notes." and stay on this page.
                             }
                         }
 
@@ -122,7 +127,7 @@ Master password page {
                         }
                         else {
                             config json = decrypted contents of config file
-                            Use "file_password" to decrypt the settings file = settings json
+                            Use "file_password" to decrypt the settings file = settings json (if it can't be read, use the default settings - never block the unlock because of the settings file)
                             The app should reflect the settings json values immediately.
                             Redirect to UI @ ./main-page.md 
                         }

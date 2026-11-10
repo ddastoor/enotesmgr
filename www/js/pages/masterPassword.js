@@ -95,13 +95,15 @@ async function submit(input, err) {
     }
 }
 
-// Load and decrypt config.json. Normally there is exactly one. But if duplicate
-// config.json files somehow exist in the Config folder (Drive allows same-named
-// files), pick the single copy that actually decrypts with this master password,
-// keep it, and delete the other copies - so only the genuine one survives. The
-// dedup/delete only happens when there is more than one config.json AND one of
-// them decrypts; if none decrypt (likely just a wrong password) nothing is
-// deleted. Returns the parsed config json, or throws DECRYPT_FAILED.
+// Load and decrypt config.json. Normally there is exactly one (unchanged path).
+// If duplicates exist (Drive allows same-named files), be careful - one of them
+// may be the ONLY key to the user's notes (see instructions/data-storage.md):
+//   - use the copy whose file password actually opens the existing notes
+//     (else the oldest by DateTimeCreated, else the first);
+//   - delete only EXACT duplicates of it (same file password);
+//   - never delete a copy that doesn't open with this master password, or that
+//     holds a different file password.
+// Returns the config json, or throws NO_CONFIG / DECRYPT_FAILED.
 async function loadConfigJson(masterPassword) {
     const configFiles = (await listChildren(state.folders.config))
         .filter((f) => f.name === CONFIG_FILE_NAME);
@@ -117,32 +119,51 @@ async function loadConfigJson(masterPassword) {
         }
     }
 
-    // More than one config.json: find the one that decrypts with this password.
-    let keeper = null;
-    let configJson = null;
+    // Several copies: which ones open with this master password?
+    const opened = [];
     for (const f of configFiles) {
         try {
-            const cipher = await downloadText(f.id);
-            configJson = JSON.parse(decryptData(cipher, masterPassword));
-            keeper = f;
-            break;
+            const json = JSON.parse(decryptData(await downloadText(f.id), masterPassword));
+            if (json && typeof json.file_password === "string" && json.file_password) opened.push({ file: f, json });
         } catch (_) {
-            /* not this copy - try the next */
+            /* not this password's copy - left alone */
         }
     }
-    if (!keeper) throw new Error("DECRYPT_FAILED"); // none decrypted: keep all, delete none
+    if (opened.length === 0) throw new Error("DECRYPT_FAILED"); // keep all, delete none
 
-    // Keep the genuine copy; delete the duplicate(s).
-    for (const f of configFiles) {
-        if (f.id !== keeper.id) {
+    const keeper = await pickConfigToUse(opened);
+
+    for (const o of opened) {
+        if (o !== keeper && o.json.file_password === keeper.json.file_password) {
             try {
-                await deleteFile(f.id);
+                await deleteFile(o.file.id); // an exact duplicate: safe to remove
             } catch (delErr) {
                 console.error("Failed to delete duplicate config.json", delErr);
             }
         }
     }
-    return configJson;
+    return keeper.json;
+}
+
+// Of several config.json copies that open with the master password, the one to
+// use: the one whose file password opens the existing notes (up to 5 notes are
+// tried); otherwise the oldest (DateTimeCreated); otherwise the first.
+async function pickConfigToUse(opened) {
+    const byAge = [...opened].sort((a, b) =>
+        ((a.file.appProperties || {}).DateTimeCreated || "9999").localeCompare((b.file.appProperties || {}).DateTimeCreated || "9999"));
+    const distinctKeys = [...new Set(opened.map((o) => o.json.file_password))];
+    if (distinctKeys.length === 1) return byAge[0];
+
+    const notes = (await listChildren(state.folders.entries)).slice(0, 5);
+    for (const note of notes) {
+        let cipher;
+        try { cipher = await downloadText(note.id); } catch (_) { continue; }
+        const opens = distinctKeys.filter((key) => {
+            try { decryptData(cipher, key); return true; } catch (_) { return false; }
+        });
+        if (opens.length === 1) return byAge.find((o) => o.json.file_password === opens[0]);
+    }
+    return byAge[0];
 }
 
 async function handleMasterPassword(masterPassword, err) {
@@ -151,15 +172,25 @@ async function handleMasterPassword(masterPassword, err) {
             const configJson = await loadConfigJson(masterPassword);
             state.configJson = configJson;
 
-            const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
-            if (settingsMeta) {
-                const settingsCipher = await downloadText(settingsMeta.id);
-                state.settingsJson = JSON.parse(decryptData(settingsCipher, configJson.file_password));
+            // Settings are a convenience: if they can't be read (e.g. written with a
+            // different key), use the defaults rather than blocking the unlock.
+            // Saving the settings page writes them back with the right key.
+            try {
+                const settingsMeta = await findChild(state.folders.config, SETTINGS_FILE_NAME);
+                if (settingsMeta) {
+                    const settingsCipher = await downloadText(settingsMeta.id);
+                    state.settingsJson = JSON.parse(decryptData(settingsCipher, configJson.file_password));
+                }
+            } catch (settingsErr) {
+                console.error("Could not read settings; using defaults", settingsErr);
+                state.settingsJson = null;
             }
         });
     } catch (e) {
         if (e.message === "DECRYPT_FAILED") {
             err.textContent = "Decryption failed. Please check your master password";
+        } else if (e.message === "NO_CONFIG") {
+            err.textContent = "Your config file is missing. Enter one of your recovery codes to restore access to your notes.";
         } else {
             console.error(e);
             err.textContent = "Something went wrong. Please try again.";

@@ -45,6 +45,17 @@ export async function findChild(parentId, name, folderOnly = false) {
     return data.files && data.files.length ? data.files[0] : null;
 }
 
+// Find ALL non-trashed children of parentId with this exact name (Drive allows
+// duplicates). Returns [{id,name,appProperties}], possibly empty.
+export async function findChildren(parentId, name, folderOnly = false) {
+    let q = `name='${escapeQuery(name)}' and '${parentId}' in parents and trashed=false`;
+    if (folderOnly) q += ` and mimeType='${FOLDER_MIME}'`;
+    const url = `${API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)&spaces=${DRIVE_SPACES}`;
+    const res = await driveFetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    return data.files || [];
+}
+
 // List all non-trashed children of parentId. Returns [{id,name,mimeType,appProperties}].
 export async function listChildren(parentId) {
     const out = [];
@@ -72,12 +83,8 @@ export async function createFolder(name, parentId) {
     return res.json();
 }
 
-export async function ensureFolder(name, parentId) {
-    const existing = await findChild(parentId, name, true);
-    if (existing) return existing.id;
-    const created = await createFolder(name, parentId);
-    return created.id;
-}
+// (Folder find-or-create lives in flow.js: it double-checks before creating and
+// handles duplicates safely - see the data-safety rules there.)
 
 // Download a file's text content by id.
 export async function downloadText(fileId) {

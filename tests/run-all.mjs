@@ -5,7 +5,7 @@
 //   node tests/run-all.mjs --only crypto   # one suite (repeat --only for more)
 //
 // Suites: verify, crypto, cli, app-core, features, framing, password-rules,
-// recovery-lockout. The browser suites run against the app in ./www served by
+// recovery-lockout, data-safety. The browser suites run against the app in ./www served by
 // ./serve.py on a free local port, with Google sign-in stubbed and Google Drive
 // faked in memory - no real Google account is ever used.
 import { spawn, spawnSync } from "child_process";
@@ -31,6 +31,7 @@ const BROWSER_SUITES = [
     { name: "framing", desc: "refuses to run inside other sites' frames" },
     { name: "password-rules", desc: "master password rules" },
     { name: "recovery-lockout", desc: "never locked out, complete code sets" },
+    { name: "data-safety", desc: "Drive glitches / duplicates never lose data" },
 ];
 
 // Run one suite; a suite that hangs is killed after SUITE_TIMEOUT_MS and fails.

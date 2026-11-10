@@ -14,4 +14,18 @@ Storage of the user's data {
 
         This remembered id mapping is per session and must be cleared on logout (so it never carries across sessions / users).
     }
+
+    Never lose existing data (duplicates and "missing" files) {
+        config.json holds the file password - the key to ALL notes - so a lookup glitch must never lead to a second config.json with a new key, nor to a copy that holds the only key being deleted. With exactly one of each file / folder (the normal case) none of this changes anything.
+
+        Look twice before creating: before concluding that the 'eNotes Manager' folder, one of its subfolders, or config.json does NOT exist - and therefore creating a folder or treating the user as new - look again once after a short pause (~1.2 s). (A folder that was just created by the app is not looked into.)
+
+        Duplicate folders (Drive allows same-named folders): use the one holding the user's data - for 'eNotes Manager', the tree that has a config.json, then the one with the most notes; for a subfolder, the one with the most items. Never delete any of them.
+
+        No setup over existing data: if config.json is missing (after the second look) but the account already holds data, do NOT show the setup page - see ./UI/login-page.md.
+
+        Duplicate config.json files: see ./UI/master-password-popup.md - use the copy whose file password opens the existing notes, delete only exact duplicates (same file password), never a copy that doesn't open with the master password or holds a different file password.
+
+        Unreadable settings.json (e.g. written with a different key): use the default settings instead of blocking the unlock; saving the settings page writes them back with the right key.
+    }
 }

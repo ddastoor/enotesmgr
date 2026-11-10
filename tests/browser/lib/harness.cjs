@@ -53,6 +53,12 @@ async function driveRoute(route) {
         const nm = /name='((?:\\.|[^'\\])*)'/.exec(q);
         const name = nm ? nm[1].replace(/\\(.)/g, "$1") : null;
         const folderOnly = q.includes("mimeType='" + FOLDER + "'");
+        // Simulated Drive glitch: global.hideLookups = { "<name>": n } makes the next
+        // n name lookups for <name> come back empty although the item exists.
+        if (name !== null && global.hideLookups && global.hideLookups[name] > 0) {
+            global.hideLookups[name]--;
+            return json({ files: [] });
+        }
         const files = children(parent).filter((f) => (name === null || f.name === name) && (!folderOnly || f.mimeType === FOLDER));
         return json({ files: files.map(pub) });
     }

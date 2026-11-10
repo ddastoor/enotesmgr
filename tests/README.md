@@ -35,6 +35,7 @@ key derivation on purpose.
 | `framing` | `browser/framing.test.cjs` | the app refuses to run inside another site's frame |
 | `password-rules` | `browser/password-rules.test.cjs` | master password rules on setup and reset |
 | `recovery-lockout` | `browser/recovery-lockout.test.cjs` | never locked out: 0/1 codes left, last-code reset, complete code sets, failure handling |
+| `data-safety` | `browser/data-safety.test.cjs` | Drive glitches and duplicate / missing files never create a second config.json, never start setup over existing data, never delete the only key to the notes |
 
 ## Notes
 
