@@ -1,5 +1,27 @@
 # Notes for Claude
 
+## Feature workflow (standing rule from the repo owner)
+
+Pushing `main` deploys the live password manager, so `main` only changes when
+the owner says so.
+
+1. Build every new feature or change on its own branch, e.g.
+   `feature/<short-name>` - never directly on `main`.
+2. Add tests to `tests/` (see below), run the FULL suite
+   (`node tests/run-all.mjs`), then commit and push ONLY that branch. Tell the
+   owner the branch name, which suites passed, and how to try it locally:
+   `git fetch origin`, `git switch <branch>`, `python3 serve.py`, then open
+   http://localhost:8000. (Manual testing there uses the owner's real vault:
+   for risky changes suggest signing in with a second Google account.)
+3. Changes the owner asks for go on the same branch as new commits (the owner
+   runs `git pull`). Never force-push or rewrite a branch the owner may have
+   checked out.
+4. Do NOT merge into `main` or push `main` until the owner explicitly asks
+   (e.g. "merge feature/x into main and push"). Then: update from
+   `origin/main`, merge the branch, run the full suite again, push `main`,
+   confirm the GitHub Pages deployment succeeded, and offer to delete the
+   merged branch.
+
 ## Tests (standing rule from the repo owner)
 
 - Every new test you write - unit, CLI or browser, including one-off checks
