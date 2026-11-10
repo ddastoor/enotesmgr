@@ -1,5 +1,7 @@
 
 General Web SPA UI Style instructions {
+    Font: Nunito, SELF-HOSTED - never loaded from Google Fonts at runtime. The files in www/fonts/ (and www/css/fonts.css) are exactly what Google Fonts serves, downloaded by src/fonts-vendor/fetch-fonts.mjs (re-run it only to update the font; www/fonts/SOURCE.md records the files' SHA-256, checked by the tests).
+
     Browser tab title: the page title shown in the browser tab is "eNotesMgr" (www/index.html, and the repo-root redirect page index.html). Everywhere the app shows its name it says "eNotesMgr" (landing card, setup card, "Unlock eNotesMgr", main page header, messages) - see ./login-page.md, ./setup-page.md, ./master-password-popup.md, ./main-page.md. Only the Google Drive folder keeps its name "eNotes Manager" (renaming it would lose existing data).
 
     Whatever UI changes you make for this SPA project, make sure it always looks stylih and modern according to modern UI standards and also fits nicely and look nice on my phone's browser screen. Use google's Material 3 Expressive Design as for the UI design.

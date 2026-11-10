@@ -48,7 +48,7 @@ Deployment (GitHub Pages):
     The repository root ./index.html exists only to redirect to ./www/ (canonical link + meta refresh + location.replace, all using a RELATIVE "www/" target so it keeps working under the GitHub Pages project path https://<user>.github.io/enotesmgr/). The redirect preserves any query string and hash. So visiting the repo root lands the user in the actual app under www/.
     If a GitHub Pages deployment fails or gets stuck on GitHub's side (the 'pages build and deployment' run in the Actions tab never starts its build job), re-run it from the Actions tab; if that is stuck too, any new push to main starts a fresh deployment. The site keeps serving the last successfully deployed version meanwhile.
     Framing: the app refuses to run inside another site's frame (clickjacking protection, done in js/app.js since a <meta> CSP can't set frame-ancestors) and shows a short message instead.
-    Security headers: GitHub Pages can't set HTTP headers, so ./www/index.html carries a Content-Security-Policy <meta> tag (only this site, Google sign-in, the Drive API and Google Fonts are allowed; 'wasm-unsafe-eval' is required for the WASM crypto). If the app ever needs a new external host, add it to that policy or the browser will block it.
+    Security headers: GitHub Pages can't set HTTP headers, so ./www/index.html carries a Content-Security-Policy <meta> tag (only this site, Google sign-in and the Drive API are allowed; 'wasm-unsafe-eval' is required for the WASM crypto). If the app ever needs a new external host, add it to that policy or the browser will block it.
 
 TODO (don't do till i tell you):
     - see ./todo.md
