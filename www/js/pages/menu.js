@@ -2,6 +2,7 @@ import { navigate } from "../app.js";
 import { state } from "../state.js";
 import { showAlert } from "../lib/dialogs.js";
 import { wipeAppData } from "../wipeAppData.js";
+import { uploadSensitiveNote } from "../sensitiveUpload.js";
 
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
@@ -55,6 +56,11 @@ export function openMenu() {
                     <button class="drawer-item" data-action="copy-token" title="Copy a token for the export utility's online mode">
                         Copy Export Token
                     </button>
+                </li>
+                <li>
+                    <button class="drawer-item" data-action="upload-sensitive" title="Decrypt a sensitive note file (.sensitive) exported by the export utility. Stays on this device: nothing is sent to Google Drive">
+                        Upload Sensitive Note
+                    </button>
                 </li>`;
 
     // "Wipe all App Data" is destructive and desktop-only (PC only).
@@ -104,6 +110,11 @@ ${exportItem}${wipeItem}
     if (tokenBtn) tokenBtn.addEventListener("click", () => {
         close();
         copyExportToken();
+    });
+    const sensitiveBtn = wrap.querySelector('[data-action="upload-sensitive"]');
+    if (sensitiveBtn) sensitiveBtn.addEventListener("click", () => {
+        close();
+        uploadSensitiveNote();
     });
     const wipeBtn = wrap.querySelector('[data-action="wipe-data"]');
     if (wipeBtn) wipeBtn.addEventListener("click", () => {

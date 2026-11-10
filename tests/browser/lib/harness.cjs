@@ -24,6 +24,17 @@ function parseMultipart(body, ctype) {
     });
     return { meta: JSON.parse(parts[0]), content: parts[1] };
 }
+// File versions, like Drive keeps them: every content write adds one; the last
+// is the head. id -> [{ id, size, content }]. Kept apart from `drive` so the
+// suites' Drive dumps are unchanged.
+const revisions = new Map();
+let revc = 0;
+function addRevision(f) {
+    const list = revisions.get(f.id) || [];
+    list.push({ id: "r" + (++revc), size: Buffer.byteLength(f.content || ""), content: f.content });
+    revisions.set(f.id, list);
+}
+const revisionsOf = (id) => revisions.get(id) || [];
 let driveCalls = 0;
 const driveLog = []; // every Drive request (method + decoded URL)
 async function driveRoute(route) {
@@ -44,6 +55,7 @@ async function driveRoute(route) {
         if (rec && (meta.parents || []).includes(rec.id)) return json({ error: "injected failure" }, 500);
     }
     if (global.failDeletes && m === "DELETE") return json({ error: "injected failure" }, 500);
+    if (global.failRevisions && url.pathname.includes("/revisions")) return json({ error: "injected failure" }, 500);
     const p = url.pathname;
     let mm;
     if (p === "/drive/v3/about") return json({ user: { emailAddress: "tester@gmail.com", displayName: "Test User" } });
@@ -68,10 +80,26 @@ async function driveRoute(route) {
         drive.set(f.id, f);
         return json({ id: f.id, name: f.name });
     }
+    if ((mm = /^\/drive\/v3\/files\/([^/]+)\/revisions$/.exec(p)) && m === "GET") {
+        if (!drive.get(mm[1])) return json({ error: "not found" }, 404);
+        return json({ revisions: revisionsOf(mm[1]).map((r) => ({ id: r.id, size: String(r.size) })) });
+    }
+    if ((mm = /^\/drive\/v3\/files\/([^/]+)\/revisions\/([^/]+)$/.exec(p)) && m === "DELETE") {
+        const list = revisionsOf(mm[1]);
+        const i = list.findIndex((r) => r.id === mm[2]);
+        if (i === -1) return json({ error: "not found" }, 404);
+        if (i === list.length - 1) return json({ error: "cannot delete the head revision" }, 403);
+        list.splice(i, 1);
+        return route.fulfill({ status: 204, body: "" });
+    }
     if ((mm = /^\/drive\/v3\/files\/([^/]+)$/.exec(p))) {
         const f = drive.get(mm[1]);
         if (!f) return json({ error: "not found" }, 404);
         if (m === "GET" && url.searchParams.get("alt") === "media") return route.fulfill({ status: 200, contentType: "text/plain", body: f.content });
+        if (m === "GET" && url.searchParams.get("fields") === "headRevisionId") {
+            const list = revisionsOf(f.id);
+            return json(list.length ? { headRevisionId: list[list.length - 1].id } : {});
+        }
         if (m === "PATCH") { Object.assign(f, { name: JSON.parse(req.postData()).name }); return json({ id: f.id, name: f.name }); }
         if (m === "DELETE") { delTree(f.id); return route.fulfill({ status: 204, body: "" }); }
     }
@@ -79,6 +107,7 @@ async function driveRoute(route) {
         const { meta, content } = parseMultipart(req.postData(), req.headers()["content-type"]);
         const f = { id: newId(), name: meta.name, mimeType: meta.mimeType, parents: meta.parents, appProperties: meta.appProperties, content };
         drive.set(f.id, f);
+        addRevision(f);
         return json({ id: f.id, name: f.name });
     }
     if ((mm = /^\/upload\/drive\/v3\/files\/([^/]+)$/.exec(p)) && m === "PATCH") {
@@ -90,6 +119,7 @@ async function driveRoute(route) {
             f.content = content;
             f.appProperties = { ...(f.appProperties || {}), ...(meta.appProperties || {}) };
         }
+        addRevision(f);
         return json({ id: f.id, name: f.name });
     }
     console.log("UNHANDLED drive call", m, req.url());
@@ -148,5 +178,5 @@ function finish() {
 
 module.exports = {
     chromium, fs, BASE, FOLDER, drive, children, folderByName, parseMultipart, driveLog, driveRoute, GIS_STUB,
-    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload,
+    revisionsOf, ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload,
 };

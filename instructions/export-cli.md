@@ -72,6 +72,10 @@ Export CLI utility {
             It is a rich text note: create a standalone html file '<note-name>.html' that renders the rich note exactly how the app's rich text editor displayed it \(wrap the note's html in the editor's markup with the editor styles inlined; embedded images/audio are inline data: URLs so they render with no network\).
         }
 
+        if (it is a sensitive note - its file-password-decrypted content is a sensitive envelope, see ./sensitive-notes.md) {
+            The CLI cannot open the note-password layer. Write the envelope as-is (still locked with the note password) to '<note-name>.sensitive' (e.g. 'bank.sensitive', 'photo.png.sensitive'). This check comes BEFORE the two cases above. After exporting, if any were written, tell the user how many and that they open with the app's menu > 'Upload Sensitive Note' (PC). The -x mirror is unaffected (files are copied as stored).
+        }
+
         Filenames are made filesystem-safe, and on a name collision within the output directory a numeric suffix \(e.g. " (1)"\) is added so nothing is overwritten.
 
         Everything the tool writes is private to the current user: directories are created with mode 0700 and files with mode 0600 \(ignored on Windows\).

@@ -8,18 +8,24 @@ import {
     renameFile,
     deleteFile,
     findChild,
+    purgeOldRevisions,
 } from "../drive.js";
-import { encryptData, decryptData } from "../crypto/crypto.js";
-import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal } from "../lib/dialogs.js";
+import { encryptData, encryptVerified, decryptData } from "../crypto/crypto.js";
+import { withStatus, flashStatus, showAlert, showPrompt, showConfirm, showYesNo, buildModal, showPasswordPrompt } from "../lib/dialogs.js";
 import { nowStamp } from "../lib/meta.js";
 import { detectFileType } from "../lib/fileType.js";
 import { buildNoteExport } from "../lib/noteExport.js";
 import { showNoteSearch } from "../lib/searchDialog.js";
+import { isSensitiveContent, wrapSensitive, unwrapSensitive } from "../lib/sensitiveNote.js";
 import { openMenu } from "./menu.js";
 
 // --- page-local state --------------------------------------------------------
 let entries = [];          // [{id, name}] sorted alphabetically
-let current = null;        // {id, name, meta} or null (dummy); see note-meta-data.md
+let current = null;        // {id, name, meta, sensitive, notePassword} or null (dummy); see note-meta-data.md
+// A sensitive note (see instructions/sensitive-notes.md) has sensitive: true and,
+// while it is the open note, notePassword: its own extra password (needed to
+// save it again). The password is dropped when another note is opened and when
+// the page is left (teardown: settings, logout, session timeout).
 let dirty = false;
 // SHA-256 (hex) of the loaded note's content, used to skip a Save when the
 // content is unchanged. null when no richtext note is loaded. See
@@ -143,6 +149,7 @@ export function render(container) {
                 <button id="tb-download" class="btn btn-tonal" title="Download">↓D</button>
                 <button id="tb-save" class="btn btn-filled" title="Save the current note">Save</button>
                 <button id="tb-rename" class="btn btn-tonal" title="Rename the current note">Rename</button>
+                <button id="tb-sensitive" class="btn btn-tonal tb-sensitive" aria-pressed="false" title="Make this note sensitive (add an extra password)"><svg class="lock-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10.5" rx="2.5"/><path class="lock-shackle" d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg><span>Sensitive</span></button>
                 <button id="tb-delete" class="btn btn-danger" title="Delete the current note">Delete</button>
             </section>
 
@@ -186,6 +193,7 @@ export function render(container) {
     container.querySelector("#tb-download").addEventListener("click", onDownload);
     container.querySelector("#tb-save").addEventListener("click", onSave);
     container.querySelector("#tb-rename").addEventListener("click", onRename);
+    container.querySelector("#tb-sensitive").addEventListener("click", onToggleSensitive);
     container.querySelector("#tb-delete").addEventListener("click", onDelete);
 
     container.querySelector("#file-select").addEventListener("change", onSelectChange);
@@ -251,6 +259,9 @@ export function render(container) {
 }
 
 export function teardown() {
+    // Leaving the main page (settings, recovery codes, logout, session timeout):
+    // forget the open sensitive note's password. Reopening it asks again.
+    if (current) current.notePassword = null;
     if (keydownHandler) {
         document.removeEventListener("keydown", keydownHandler);
         keydownHandler = null;
@@ -417,7 +428,10 @@ async function onSelectChange(e) {
         return;
     }
     const entry = entries.find((x) => x.name === name);
-    if (entry) await loadNote(entry);
+    if (entry) {
+        // Cancelled a sensitive note's password prompt: stay on the previous note.
+        if ((await loadNote(entry)) === "cancelled") sel.value = current ? current.name : "";
+    }
 }
 
 // Open the note-search dialog; if the user picks a note, select it in the
@@ -431,20 +445,32 @@ async function onSearch() {
 }
 
 // --- load / save -------------------------------------------------------------
+// Returns "shown", "failed" (error shown), or "cancelled" (the user cancelled a
+// sensitive note's password prompt; the previously open note stays as it was).
 async function loadNote(entry) {
+    // Reloading the open sensitive note (Refresh, or picking it again via
+    // search): try the password we hold first so the user isn't asked again.
+    const knownPassword = current && current.id === entry.id && current.sensitive ? current.notePassword : null;
     try {
-        const { meta, content } = await withStatus("Loading...", async () => {
+        const stored = await withStatus("Loading...", async () => {
             const cipher = await downloadText(entry.id);
-            const decrypted = decryptData(cipher, filePassword());
-            // Metadata comes from the file's appProperties; the decrypted file is
-            // pure content. Fall back to the legacy embedded-metadata layout for
-            // notes saved before this change (they have no appProperties).
-            if (entry.meta && entry.meta.FileType) {
-                return { meta: entry.meta, content: decrypted };
-            }
-            return parseNote(decrypted);
+            return decryptData(cipher, filePassword());
         });
-        current = { id: entry.id, name: entry.name, meta };
+        // A sensitive note is still locked with its own password: ask for it.
+        let decrypted = stored;
+        let notePassword = null;
+        if (isSensitiveContent(stored)) {
+            const unlocked = await unlockSensitive(entry.name, stored, knownPassword);
+            if (!unlocked) return "cancelled";
+            ({ content: decrypted, password: notePassword } = unlocked);
+        }
+        // Metadata comes from the file's appProperties; the decrypted file is
+        // pure content. Fall back to the legacy embedded-metadata layout for
+        // notes saved before this change (they have no appProperties).
+        const { meta, content } = entry.meta && entry.meta.FileType
+            ? { meta: entry.meta, content: decrypted }
+            : parseNote(decrypted);
+        current = { id: entry.id, name: entry.name, meta, sensitive: notePassword !== null, notePassword };
         displayNote(meta, content);
         if (isMediaType(meta)) savedContentHash = null;
         else await snapshotContentHash();
@@ -453,9 +479,11 @@ async function loadNote(entry) {
         // For a richtext note, put the caret in the editor so the user can type
         // right away.
         if (!isMediaType(meta)) document.getElementById("editor").focus();
+        return "shown";
     } catch (e) {
         console.error(e);
         await showAlert("Could not open this note.", "Error");
+        return "failed";
     }
 }
 
@@ -463,6 +491,178 @@ async function onRefresh() {
     if (!current) return;
     const entry = entries.find((x) => x.id === current.id);
     if (entry) await loadNote(entry);
+}
+
+// --- sensitive notes (see instructions/sensitive-notes.md) --------------------
+// Layers: content -> encrypted with the NOTE password (+ marker) -> encrypted
+// with the FILE password (like every note). Opening reverses that.
+
+// Ask for a sensitive note's password until it opens the note; null if the user
+// cancels. Returns { content, password }. `stored` is the note's text after the
+// file-password layer was removed.
+async function unlockSensitive(name, stored, knownPassword) {
+    const payload = unwrapSensitive(stored);
+    if (!payload) throw new Error("Malformed sensitive note");
+    const tryOpen = (pwd) => {
+        try { return decryptData(payload, pwd); } catch (_) { return null; }
+    };
+    if (knownPassword) {
+        const content = await withStatus("Unlocking...", async () => tryOpen(knownPassword));
+        if (content !== null) return { content, password: knownPassword };
+    }
+    let error = "";
+    for (;;) {
+        const pwd = await showPasswordPrompt(`"${name}" is a sensitive note. Enter its password:`, {
+            title: "Sensitive note",
+            okLabel: "Unlock",
+            error,
+        });
+        if (pwd === null) return null;
+        const content = await withStatus("Unlocking...", async () => tryOpen(pwd));
+        if (content !== null) return { content, password: pwd };
+        error = "Wrong password. Try again.";
+    }
+}
+
+// What gets encrypted with the file password for `note`: its content as-is, or -
+// for a sensitive note - the content locked with the note's own password first
+// (verified: it must decrypt back, since nothing else can recover this layer).
+// Never falls back to the file password alone for a sensitive note.
+function sealContent(content, note) {
+    if (!note.sensitive) return content;
+    if (!note.notePassword) throw new Error("The sensitive note's password is not available");
+    return wrapSensitive(encryptVerified(content, note.notePassword));
+}
+
+// Re-fetch a note from Drive and return its actual content (both layers removed
+// for a sensitive note, legacy embedded metadata stripped). Used for uploaded
+// notes, whose content isn't kept on screen.
+async function fetchNoteContent(note) {
+    const stored = decryptData(await downloadText(note.id), filePassword());
+    const plain = isSensitiveContent(stored)
+        ? decryptData(unwrapSensitive(stored), note.notePassword)
+        : stored;
+    const listed = entries.find((x) => x.id === note.id);
+    return listed && listed.meta && listed.meta.FileType ? plain : parseNote(plain).content;
+}
+
+// Sensitive note password rule (it is the only protection of a note exported by
+// the export utility, so it can't be trivially short).
+function validateNotePassword(pwd) {
+    return pwd.length < 8 ? "The password must be at least 8 characters long." : null;
+}
+
+// True when the note on screen (the dropdown's pick) is the open note. The
+// Sensitive toggle rewrites the open note from what is on screen, so it only acts
+// then - never on a note that isn't shown.
+function shownIsCurrent() {
+    const sel = document.getElementById("file-select");
+    return !!(current && sel && sel.value === current.name);
+}
+
+async function onToggleSensitive() {
+    if (!shownIsCurrent()) return;
+    if (current.sensitive) await removeSensitive();
+    else await makeSensitive();
+}
+
+// Rewrite the open note with `sensitive` on/off. Rich text is taken from the
+// editor (unsaved edits included - the note is saved as shown), an upload is
+// re-fetched. Returns the length of what was written (for the revision purge).
+async function rewriteNote(note, sensitive, notePassword, status) {
+    const media = isMediaType(note.meta);
+    const content = media
+        ? await withStatus("Loading...", () => fetchNoteContent(note))
+        : readEditorContent();
+    const meta = { ...note.meta, DateTimeModified: nowStamp() };
+    let size = 0;
+    await withStatus(status, async () => {
+        const sealed = sealContent(content, { sensitive, notePassword });
+        const cipher = encryptData(sealed, filePassword());
+        size = cipher.length;
+        await updateTextFile(note.id, cipher, meta);
+    });
+    note.meta = meta;
+    note.sensitive = sensitive;
+    note.notePassword = sensitive ? notePassword : null;
+    const listed = entries.find((x) => x.id === note.id);
+    if (listed) listed.meta = meta;
+    if (!media && note === current) {
+        savedContentHash = await sha256Hex(content);
+        dirty = false;
+    }
+    return size;
+}
+
+async function makeSensitive() {
+    const note = current;
+    const pwd = await showPasswordPrompt(
+        `Choose an extra password for "${note.name}". It will be asked for every time this note is opened.`,
+        {
+            title: "Make note sensitive",
+            okLabel: "Make sensitive",
+            confirm: true,
+            validate: validateNotePassword,
+            warning: "Keep this password safe: if you forget it, this note can NOT be recovered " +
+                "(recovery codes only restore your master password, not note passwords)." +
+                (isMediaType(note.meta) ? "" : " The note is saved as it is now, including unsaved changes."),
+        });
+    if (pwd === null || current !== note) return;
+    let size;
+    try {
+        size = await rewriteNote(note, true, pwd, "Protecting...");
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not make this note sensitive. It was not changed.", "Error");
+        return;
+    } finally {
+        updateButtons();
+    }
+    // Drive keeps older versions of the file (readable with the file password
+    // alone) for ~30 days: delete them now.
+    try {
+        await withStatus("Removing older versions...", () => purgeOldRevisions(note.id, size));
+        await flashStatus(`"${note.name}" is now a sensitive note.`);
+    } catch (e) {
+        console.error(e);
+        await showAlert(
+            `"${note.name}" is now a sensitive note.\n\nBut Google Drive's older versions of it ` +
+            "(protected by your master password only) could not be deleted. Drive deletes them " +
+            "automatically within about 30 days.",
+            "Sensitive note");
+    }
+}
+
+async function removeSensitive() {
+    const note = current;
+    if (!note.notePassword) {
+        await showAlert("Open this note again first.", "Sensitive note");
+        return;
+    }
+    let error = "";
+    for (;;) {
+        const pwd = await showPasswordPrompt(
+            `Remove the extra password from "${note.name}"? It will then be protected by your ` +
+            "master password only. Enter the note's password to confirm:",
+            {
+                title: "Remove extra password",
+                okLabel: "Remove",
+                error,
+                warning: isMediaType(note.meta) ? "" : "The note is saved as it is now, including unsaved changes.",
+            });
+        if (pwd === null || current !== note) return;
+        if (pwd === note.notePassword) break;
+        error = "Wrong password. Try again.";
+    }
+    try {
+        await rewriteNote(note, false, null, "Saving...");
+        await flashStatus(`"${note.name}" is no longer sensitive.`);
+    } catch (e) {
+        console.error(e);
+        await showAlert("Could not remove the extra password. The note was not changed.", "Error");
+    } finally {
+        updateButtons();
+    }
 }
 
 // Returns true if it actually wrote to Drive, false if it was a no-op
@@ -481,7 +681,8 @@ async function saveCurrentNote() {
     // (appProperties) with a refreshed DateTimeModified.
     const meta = { ...current.meta, DateTimeModified: nowStamp() };
     await withStatus("Saving...", async () => {
-        const cipher = encryptData(content, filePassword());
+        // (A sensitive note is locked with its own password first.)
+        const cipher = encryptData(sealContent(content, current), filePassword());
         await updateTextFile(current.id, cipher, meta);
     });
     current.meta = meta;
@@ -608,12 +809,18 @@ async function onUploadFile(e) {
 // decoded back to its original bytes under its own name.
 async function onDownload() {
     if (!current) return;
+    // A sensitive note downloads unlocked (it is open), so check first.
+    if (current.sensitive && !(await showConfirm(
+        `"${current.name}" is a sensitive note. The downloaded file will NOT be encrypted: ` +
+        "anyone who gets hold of it can read it. Download anyway?", "Download sensitive note"))) return;
     try {
         // Get the note's decrypted content. Rich text comes from the editor (so
         // any on-screen edits are included); an uploaded file (image/audio/other)
         // can't be edited, so re-fetch + decrypt its stored data: URL.
         let content;
-        if (isMediaType(current.meta)) {
+        if (isMediaType(current.meta) && current.sensitive) {
+            content = await withStatus("Preparing download...", () => fetchNoteContent(current));
+        } else if (isMediaType(current.meta)) {
             content = await withStatus("Preparing download...", async () =>
                 decryptData(await downloadText(current.id), filePassword()));
         } else {
@@ -972,4 +1179,13 @@ function updateButtons() {
     document.getElementById("tb-download").disabled = isDummy;
     // Save disabled for the dummy entry and for uploaded media files.
     document.getElementById("tb-save").disabled = isDummy || isMedia;
+    // Sensitive toggle: any loaded note (rich text or upload).
+    const sens = document.getElementById("tb-sensitive");
+    const on = !!(current && current.sensitive);
+    sens.disabled = isDummy || !shownIsCurrent();
+    sens.setAttribute("aria-pressed", String(on));
+    sens.classList.toggle("is-on", on);
+    sens.title = on
+        ? "This note is sensitive (extra password). Click to remove the extra password"
+        : "Make this note sensitive (add an extra password)";
 }

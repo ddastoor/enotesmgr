@@ -197,3 +197,40 @@ export async function renameFile(fileId, newName) {
 export async function deleteFile(fileId) {
     await driveFetch(`${API}/files/${fileId}`, { method: "DELETE", headers: authHeaders() });
 }
+
+// Permanently delete every OLDER version (revision) of a file, keeping only its
+// current content. Drive keeps the previous contents of an updated file for about
+// 30 days; once a note is made sensitive those older versions are still readable
+// with the file password alone, so they are removed. For safety the current
+// version must be both the file's headRevisionId AND exactly `expectedSize` bytes
+// (the content just written) - otherwise nothing is deleted and this throws.
+// Returns how many older versions were deleted. Throws if Drive refuses; callers
+// treat that as non-fatal (the older versions then expire on their own).
+export async function purgeOldRevisions(fileId, expectedSize) {
+    const fileRes = await driveFetch(`${API}/files/${fileId}?fields=headRevisionId`, { headers: authHeaders() });
+    const head = (await fileRes.json()).headRevisionId;
+    const revisions = [];
+    let pageToken = null;
+    do {
+        let url = `${API}/files/${fileId}/revisions?fields=nextPageToken,revisions(id,size)&pageSize=1000`;
+        if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
+        const res = await driveFetch(url, { headers: authHeaders() });
+        const data = await res.json();
+        (data.revisions || []).forEach((r) => revisions.push(r));
+        pageToken = data.nextPageToken;
+    } while (pageToken);
+    const current = revisions.find((r) => r.id === head);
+    if (!head || !current || Number(current.size) !== expectedSize) {
+        throw new Error("Could not identify the file's current version; no versions deleted");
+    }
+    let deleted = 0;
+    for (const r of revisions) {
+        if (r.id === head) continue;
+        await driveFetch(`${API}/files/${fileId}/revisions/${encodeURIComponent(r.id)}`, {
+            method: "DELETE",
+            headers: authHeaders(),
+        });
+        deleted++;
+    }
+    return deleted;
+}

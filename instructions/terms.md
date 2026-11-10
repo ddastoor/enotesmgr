@@ -29,6 +29,10 @@ mapping of what i say to what i mean {
 
     file password => { "file_password" entry inside the config json }
 
+    'sensitive note' => { a note the user gave an extra, per-note password - see ./sensitive-notes.md }
+    'note password' => { a sensitive note's own extra password. Never stored; not covered by recovery codes. }
+    'sensitive envelope' => { what the file password decrypts a sensitive note to: the marker "<<eNotesMgr-sensitive-note-v1>>" followed by the note content encrypted with the note password (base64) }
+
     'user logs in' => { successful google oauth authentication \(can be an existing user or a new user\) }
     'new user' => { a user that has never logged in before \(if the config file doesn't exist yet, this means it's a new user\) }
     'existing user' => { a user that has logged in before \(if the config file exists, this means it's an existing user\) }

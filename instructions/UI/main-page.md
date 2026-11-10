@@ -213,9 +213,12 @@ Main page {
                     }
                     on click {
                         Download the currently loaded note to the user's device in UNENCRYPTED form, re-using the export utility's output logic so the downloaded file is identical to what that utility would write \(see ../../export-cli.md "Output rules"\) {
+                            if (the note is a sensitive note - see ../sensitive-notes.md) {
+                                First warn that the downloaded file will NOT be encrypted (anyone who gets it can read it) and ask OK / Cancel; Cancel downloads nothing.
+                            }
                             Obtain the note's decrypted content {
                                 if (it is a rich text note) { use the current on-screen rich text editor content (so any unsaved edits are included). }
-                                else (it is an uploaded file - image, audio, or any other type) { re-fetch the note file from the entries folder and decrypt it with the file password to get its content (a data: URL). }
+                                else (it is an uploaded file - image, audio, or any other type) { re-fetch the note file from the entries folder and decrypt it with the file password (and, for a sensitive note, then with its note password) to get its content (a data: URL). }
                             }
                             if (it is a rich text note) {
                                 Download a standalone '<note-name>.html' that renders the note exactly how the editor displayed it (the same html the export utility produces).
@@ -256,6 +259,20 @@ Main page {
                     }
                 }
 
+                'Sensitive' toggle button {
+                    On both PC and mobile. Position: between the Rename and Delete buttons.
+                    label: a padlock icon (inline SVG, open padlock when off, closed when on) followed by "Sensitive".
+                    It is a toggle (aria-pressed): when the current note is a sensitive note (see ../sensitive-notes.md) it is shown "on" (highlighted amber, closed padlock).
+                    tooltip: when off "Make this note sensitive (add an extra password)"; when on "This note is sensitive (extra password). Click to remove the extra password".
+                    disabled if {
+                        no note is currently selected (the dummy "" entry), or the note shown in the file selector is not the loaded note
+                    }
+                    on click {
+                        if (the note is not sensitive) { make it sensitive - see ../sensitive-notes.md 'Making a note sensitive' }
+                        else { remove its extra password - see ../sensitive-notes.md 'Removing the extra password' }
+                    }
+                }
+
                 Delete button {
                     label: "Delete"
                     tooltip: "Delete the current note"
@@ -272,6 +289,8 @@ Main page {
             'load the note' functionality {
                 
                 Fetch the selected file from entries folder, decrypt the file using the file password.
+
+                If the result is a sensitive note's envelope, ask for its note password and decrypt with it as well (see ../sensitive-notes.md 'Opening a sensitive note'). If that prompt is cancelled, keep the previously loaded note and put the file selector back on it.
 
                 See ./note-meta-data.md and use it to display the note in the app using the right display controls according to note meta data keys FileType and CreationMethod
 
@@ -312,6 +331,8 @@ Main page {
                     Update the actual note content.
 
                     Encrypt the current file (whether an audio, image, or rich text file) using the file password and save the encrypted contents to the currently selected file in entries folder. Show the transient status "Saving..." while the save operation is in progress.
+
+                    For a sensitive note the content is first encrypted with its note password, and that result with the file password - see ../sensitive-notes.md 'Saving a sensitive note'.
 
                     See ./note-meta-data.md for logic related to 'On Saving the note, just before encrypting the note file contents'
                 }

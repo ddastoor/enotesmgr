@@ -23,6 +23,7 @@ import { cryptoReady, decryptData } from "../../www/js/crypto/crypto.js";
 // The note -> output-file decision (type, filename, html wrapping, byte decoding)
 // is shared with the in-app Download button so the two produce identical output.
 import { buildNoteExport, sanitizeName } from "../../www/js/lib/noteExport.js";
+import { isSensitiveContent } from "../../www/js/lib/sensitiveNote.js";
 import {
     mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync,
 } from "node:fs";
@@ -153,7 +154,18 @@ function writeNote(rootDir, noteName, content) {
     const { filename, bytes } = buildNoteExport(noteName, content);
     const out = uniquePath(rootDir, filename);
     writeFileSync(out, bytes, { mode: FILE_MODE });
+    if (isSensitiveContent(content)) sensitiveCount++;
     return out;
+}
+
+// Sensitive notes (an extra per-note password, see sensitive-notes.md) can only be
+// unlocked with the file password here: they are written still locked with
+// their note password, as "<name>.sensitive". Tell the user how to open them.
+let sensitiveCount = 0;
+function sensitiveHint() {
+    if (!sensitiveCount) return;
+    console.log(`\n${sensitiveCount} sensitive note(s) were saved still locked with their own note password (*.sensitive).` +
+        `\nTo read one: open eNotesMgr on a PC, menu > 'Upload Sensitive Note', pick the file and enter that note's password.`);
 }
 
 // --- Drive REST (online) -----------------------------------------------------
@@ -339,6 +351,7 @@ async function runOnline(args) {
             console.warn(`  SKIPPED ${e.name}: ${err.message}`);
         }
     }
+    sensitiveHint();
 }
 
 // Replicate the entire 'eNotes Manager' Drive folder, as-is (still encrypted),
@@ -407,6 +420,7 @@ async function runOffline(args) {
             console.warn(`  SKIPPED ${basename(p)}: ${err.message}`);
         }
     }
+    sensitiveHint();
 }
 
 // Decrypt config.json with the master password -> file_password (shared by both
