@@ -1,11 +1,15 @@
-// Pictures and audio work the same in a sensitive note as in a normal note: the
-// SAME sequence of editing actions is done in a normal rich text note and in a
-// sensitive one, and every step must give the same result - Insert Image, Insert
-// Audio, Ctrl+V of an image from the real clipboard (small and screenshot-sized),
-// Ctrl+V of text, pasting an audio file, removing an embed with its ✕ button and
-// with Delete, Ctrl+Z bringing it back, saving and reopening (the sensitive note
-// with its password); finally both notes hold byte-identical content (the
-// sensitive one still double encrypted in Drive). Plus the mobile ✕ (with confirm).
+// A sensitive note can do everything a normal note can: the SAME sequence of
+// editing actions is done in a normal rich text note and in a sensitive one, and
+// every step must give the same result - Insert Image, Insert Audio, Ctrl+V of an
+// image from the real clipboard (small and screenshot-sized), Ctrl+V of text,
+// pasting image / audio files, removing an embed with its ✕ button and with
+// Delete, Ctrl+Z / Ctrl+Y, the Undo / Redo / Bold / Italic / Underline buttons,
+// Save (and "Nothing to save.."), saving and reopening (the sensitive note with
+// its password), Search, Rename, Download and Delete; both notes hold
+// byte-identical content (the sensitive one still double encrypted in Drive).
+// Mobile: the always-visible ✕ (with confirm) and tap-to-open of a picture.
+// Only the designed differences are allowed: the sensitive note asks for its
+// password when opened, warns before Download, and is listed with a padlock.
 // Usage: node media-parity.test.cjs <baseUrl>   (normally via ../run-all.mjs)
 const { chromium, fs, drive, GIS_STUB, driveRoute, ok, finish, newPage, modal, clickModal, login, onMain, unlockInput } = require("./lib/harness.cjs");
 const path = require("path");
@@ -34,10 +38,18 @@ const NOTE_PW = "NotePass1";
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(BASE);
     const status = () => page.waitForFunction(() => { const s = document.querySelector(".status-overlay"); return !s || s.style.display === "none"; }, null, { timeout: 120000 });
-    const counts = () => page.evaluate(() => ({
-        img: document.querySelectorAll("#editor .media-embed img").length,
-        audio: document.querySelectorAll("#editor .media-embed audio").length,
-    }));
+    const counts = () => page.evaluate(() => {
+        const ed = document.getElementById("editor");
+        return {
+            img: ed.querySelectorAll(".media-embed img").length,
+            audio: ed.querySelectorAll(".media-embed audio").length,
+            bold: ed.querySelectorAll("b, strong").length,
+            italic: ed.querySelectorAll("i, em").length,
+            underline: ed.querySelectorAll("u").length,
+            text: ed.textContent.replace(/✕/g, ""),
+        };
+    });
+    const fmtButton = (cmd) => page.locator(`.editor-toolbar [data-cmd="${cmd}"]`).dispatchEvent("mousedown");
     const savedHtml = () => page.evaluate(() => {
         const c = document.getElementById("editor").cloneNode(true);
         c.querySelectorAll(".embed-del").forEach((e) => e.remove());
@@ -125,6 +137,14 @@ const NOTE_PW = "NotePass1";
             await page.keyboard.press("Delete");
         });
         await step(kind, "Ctrl+Z brings it back", async () => { await page.click("#editor"); await page.keyboard.press("Control+z"); });
+        await step(kind, "Ctrl+Y redoes the Delete", () => page.keyboard.press("Control+y"));
+        await step(kind, "Undo button", () => fmtButton("undo"));
+        await step(kind, "Redo button", () => fmtButton("redo"));
+        await step(kind, "Undo button again", () => fmtButton("undo"));
+        await page.click("#editor"); await page.keyboard.press("End");
+        await step(kind, "Bold button + type", async () => { await fmtButton("bold"); await page.keyboard.type("BOLD"); await fmtButton("bold"); });
+        await step(kind, "Italic button + type", async () => { await fmtButton("italic"); await page.keyboard.type("ITAL"); await fmtButton("italic"); });
+        await step(kind, "Underline button + type", async () => { await fmtButton("underline"); await page.keyboard.type("UNDER"); await fmtButton("underline"); });
         await page.click("#tb-save"); await status();
         const err = await modal(page, "Could not save").count();
         ok(!err, `${kind}: Save works`);
@@ -144,7 +164,12 @@ const NOTE_PW = "NotePass1";
         // Reopened: paste once more without clicking, then save again.
         await clipboardImage(4, 4);
         await step(kind, "Ctrl+V image right after reopening", () => page.keyboard.press("Control+v"));
-        await page.click("#tb-save"); await status();
+        await step(kind, "Ctrl+S saves (focus leaves the editor)", async () => { await page.keyboard.press("Control+s"); await status(); });
+        ok(!(await modal(page, "Could not save").count()), `${kind}: Ctrl+S works`);
+        await page.click("#tb-save");
+        await page.waitForSelector(".status-overlay .status-text:text('Nothing to save..')");
+        await status();
+        ok(true, `${kind}: Save with no changes flashes 'Nothing to save..'`);
         results[kind].html = await savedHtml();
     }
 
@@ -155,6 +180,9 @@ const NOTE_PW = "NotePass1";
             `${n.label}: normal ${n.img} img / ${n.audio} audio (focus ${n.focus}) = sensitive ${s.img} img / ${s.audio} audio (focus ${s.focus})`);
     }
     ok(results.normal.find((r) => r.label === "Ctrl+V image right after creating").img === 1, "Ctrl+V of a picture works (sanity: it really inserted one)");
+    const fmt = results.sensitive.find((r) => r.label === "Underline button + type");
+    ok(fmt.bold >= 1 && fmt.italic >= 1 && fmt.underline >= 1 && /BOLD.*ITAL.*UNDER/.test(fmt.text) && fmt.text.includes("pasted words"),
+        `Bold / Italic / Underline really applied and pasted text is there (b ${fmt.bold}, i ${fmt.italic}, u ${fmt.underline})`);
     ok(results.normal.at(-1).img === results.normal.find((r) => r.label === "after save + reopen").img + 1, "Ctrl+V after reopening works");
     ok(results.normal.html === results.sensitive.html, "the two notes end with byte-identical content");
     const sStored = C.decryptData(fileByName("note-s").content, FP);
@@ -162,27 +190,97 @@ const NOTE_PW = "NotePass1";
     ok(sStored.startsWith(PREFIX) && C.decryptData(sStored.slice(PREFIX.length), NOTE_PW) === nStored,
         "Drive: the sensitive note is double encrypted and holds exactly the normal note's content");
 
-    console.log("4. Mobile: the always-visible ✕ (with confirm) works the same");
+    console.log("4. Search, Rename, Download, Delete");
+    const openNote = async (name, pw) => {
+        await page.selectOption("#file-select", name);
+        if (pw) { await modal(page, "is a sensitive note").waitFor(); await modal(page, "is a sensitive note").locator("input").fill(pw); await clickModal(page, "is a sensitive note", "Unlock"); }
+        await page.waitForFunction((n) => document.querySelector("#file-select").value === n, name); await status();
+    };
+    const other = {};
+    for (const [kind, name, pw] of [["normal", "note-n", null], ["sensitive", "note-s", NOTE_PW]]) {
+        // Search finds it (the sensitive one then asks for its password).
+        await page.selectOption("#file-select", ""); await status();
+        await page.click("#tb-search");
+        await page.fill(".search-input", name); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter");
+        if (pw) { await modal(page, "is a sensitive note").waitFor(); await modal(page, "is a sensitive note").locator("input").fill(pw); await clickModal(page, "is a sensitive note", "Unlock"); }
+        await page.waitForFunction((n) => document.querySelector("#file-select").value === n, name); await status();
+        const found = (await savedHtml()) === results[kind].html;
+        // Rename.
+        await page.click("#tb-rename");
+        await modal(page, "new name").locator("input").fill(name + "-renamed");
+        await clickModal(page, "new name", "OK"); await status();
+        const renamed = await page.inputValue("#file-select") === name + "-renamed" && !!fileByName(name + "-renamed") && !fileByName(name);
+        const label = await page.$eval("#file-select", (s) => s.options[s.selectedIndex].textContent);
+        // Download (the sensitive one warns first).
+        const [d] = await Promise.all([page.waitForEvent("download"), (async () => {
+            await page.click("#tb-download");
+            if (pw) await clickModal(page, "will NOT be encrypted", "OK");
+        })()]);
+        const html = fs.readFileSync(await d.path(), "utf8").split(name + "-renamed").join("NAME");
+        other[kind] = { found, renamed, label, file: d.suggestedFilename().replace(name, "NAME"), html };
+    }
+    ok(other.normal.found && other.sensitive.found, "Search opens both (the sensitive one with its password)");
+    ok(other.normal.renamed && other.sensitive.renamed, "Rename works for both");
+    ok(other.normal.label === "note-n-renamed" && other.sensitive.label === "note-s-renamed \u{1F512}", "after Rename the sensitive one keeps its padlock");
+    ok(fileByName("note-s-renamed").appProperties.Sensitive === "yes" && C.decryptData(fileByName("note-s-renamed").content, FP).startsWith(PREFIX),
+        "after Rename the sensitive one is still sensitive (metadata + double encryption)");
+    ok(other.normal.file === other.sensitive.file && other.normal.html === other.sensitive.html,
+        `Download gives the same ${other.normal.file} for both (only the note name differs)`);
+    for (const [name, pw] of [["note-n-renamed", null], ["note-s-renamed", NOTE_PW]]) {
+        await openNote(name, pw);
+        await page.click("#tb-delete"); await clickModal(page, "cannot be undone", "OK"); await status();
+    }
+    ok(!fileByName("note-n-renamed") && !fileByName("note-s-renamed") && await page.inputValue("#file-select") === "", "Delete works for both");
+
+    console.log("5. Mobile: the always-visible ✕ (with confirm) and tap-to-open work the same");
+    // Two fresh notes with one (tappable, 200x150) picture each, for the mobile checks.
+    const bigPng = Buffer.from(await page.evaluate(() => {
+        const c = document.createElement("canvas"); c.width = 200; c.height = 150;
+        const g = c.getContext("2d"); g.fillStyle = "#7c5fd0"; g.fillRect(0, 0, 200, 150);
+        return c.toDataURL("image/png").split(",")[1];
+    }), "base64");
+    for (const [name, sensitive] of [["mob-n", false], ["mob-s", true]]) {
+        await page.click(sensitive ? "#tb-new-sensitive" : "#tb-new");
+        await modal(page, sensitive ? "new sensitive note" : "Enter a name for the new note").locator("input").fill(name);
+        await clickModal(page, sensitive ? "new sensitive note" : "Enter a name for the new note", "OK");
+        if (sensitive) {
+            const m = modal(page, "Choose an extra password");
+            await m.waitFor(); await m.locator("input").nth(0).fill(NOTE_PW); await m.locator("input").nth(1).fill(NOTE_PW);
+            await clickModal(page, "Choose an extra password", "Create");
+        }
+        await page.waitForFunction((n) => document.querySelector("#file-select").value === n, name); await status();
+        await page.setInputFiles("#hidden-ins-image", { name: "big.png", mimeType: "image/png", buffer: bigPng });
+        await page.waitForSelector("#editor .media-embed img");
+        await page.click("#tb-save"); await status();
+    }
     const mob = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     await login(mob); await unlockInput(mob, "Master123"); await onMain(mob);
     const mobileResult = {};
-    for (const [name, pw] of [["note-n", null], ["note-s", NOTE_PW]]) {
+    for (const [name, pw] of [["mob-n", null], ["mob-s", NOTE_PW]]) {
         await mob.selectOption("#file-select", name);
         if (pw) { await modal(mob, "is a sensitive note").waitFor(); await modal(mob, "is a sensitive note").locator("input").fill(pw); await clickModal(mob, "is a sensitive note", "Unlock"); }
         await mob.waitForFunction((n) => document.querySelector("#file-select").value === n, name);
         await mob.waitForFunction(() => { const s = document.querySelector(".status-overlay"); return !s || s.style.display === "none"; });
+        // Tapping the (only, 200x150) picture opens it in a new window.
+        const [popup] = await Promise.all([mob.waitForEvent("popup", { timeout: 10000 }).catch(() => null), mob.locator("#editor .media-embed img").first().click({ position: { x: 10, y: 40 } })]);
+        const opened = !!popup && await popup.evaluate(() => !!document.querySelector("img") && document.querySelector("img").src.startsWith("data:image/png"));
+        if (popup) await popup.close();
+        // Insert a picture, then remove it with its always-visible ✕ (confirm).
         const before = await mob.locator("#editor .media-embed").count();
         await mob.setInputFiles("#hidden-ins-image", { name: "m.png", mimeType: "image/png", buffer: PNG });
         await mob.waitForFunction((c) => document.querySelectorAll("#editor .media-embed").length > c, before);
-        await mob.locator("#editor .media-embed").last().locator(".embed-del").click();
+        const tiny = mob.locator("#editor .media-embed").filter({ has: mob.locator(`img[src="data:image/png;base64,${PNG.toString("base64")}"]`) });
+        await tiny.locator(".embed-del").click();
         await clickModal(mob, "Remove this image?", "OK");
         await mob.waitForTimeout(200);
-        mobileResult[name] = [before, await mob.locator("#editor .media-embed").count()];
+        const after = await mob.locator("#editor .media-embed").count();
+        const bigLeft = await mob.locator("#editor .media-embed img").first().evaluate((i) => i.naturalWidth === 200);
+        mobileResult[name] = [before, after, opened, bigLeft];
         await mob.selectOption("#file-select", "");
         if (await modal(mob, "save the current note").count()) await clickModal(mob, "save the current note", "No");
     }
-    ok(JSON.stringify(mobileResult["note-n"]) === JSON.stringify(mobileResult["note-s"]) && mobileResult["note-s"][0] === mobileResult["note-s"][1],
-        `mobile: insert image then ✕ + confirm removes it, the same in both (${JSON.stringify(mobileResult)})`);
+    ok(JSON.stringify(mobileResult["mob-n"]) === JSON.stringify(mobileResult["mob-s"]) && mobileResult["mob-s"][0] === mobileResult["mob-s"][1] && mobileResult["mob-s"][2] === true && mobileResult["mob-s"][3] === true,
+        `mobile: insert + ✕ with confirm removes a picture, tapping a picture opens it in a new window - the same in both (${JSON.stringify(mobileResult)})`);
 
     ok(errors.length === 0, "no page errors" + (errors.length ? ": " + errors.join(" | ") : ""));
     await browser.close();

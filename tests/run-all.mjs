@@ -36,7 +36,7 @@ const BROWSER_SUITES = [
     { name: "cli-roundtrip", desc: "export CLI exports data made by the current app" },
     { name: "sensitive-notes", desc: "sensitive notes: extra password, CLI export, Decrypt Sensitive File" },
     { name: "cli-matrix", desc: "every CLI mode x text / embedded images x normal / sensitive" },
-    { name: "media-parity", desc: "pictures / audio / paste work the same in sensitive and normal notes" },
+    { name: "media-parity", desc: "a sensitive note can do everything a normal note can" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
 ];
