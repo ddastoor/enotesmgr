@@ -96,7 +96,7 @@ function richTextToHtml(title, contentHtml) {
 //     (keeping its extension, or deriving one from the data: URL's MIME).
 //   - sensitive note still locked with its own note password (the export CLI
 //     only removes the file-password layer) -> written as-is to
-//     "<name>.sensitive"; the app's menu > "Upload Sensitive Note" decrypts it.
+//     "<name>.sensitive"; the app's menu > "Decrypt Sensitive File" decrypts it.
 //     (The app's own Download passes the unlocked content, never this.)
 export function buildNoteExport(noteName, content) {
     const safe = sanitizeName(noteName);

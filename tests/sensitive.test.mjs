@@ -66,7 +66,7 @@ try {
     const files = dir ? fs.readdirSync(path.join(run, dir)).sort() : [];
     ok(r.status === 0 && files.join() === "bank.sensitive,plain.html", "exports bank.sensitive + plain.html: " + files.join(", "));
     ok(dir && fs.readFileSync(path.join(run, dir, "bank.sensitive"), "utf8") === afterFile, "bank.sensitive = the envelope (still locked with the note password)");
-    ok(/1 sensitive note\(s\)/.test(r.stdout) && r.stdout.includes("Upload Sensitive Note"), "and says how to open it");
+    ok(/1 sensitive note\(s\)/.test(r.stdout) && r.stdout.includes("Decrypt Sensitive File"), "and says how to open it");
     if (process.platform !== "win32" && dir) {
         ok((fs.statSync(path.join(run, dir, "bank.sensitive")).mode & 0o777) === 0o600, "written private (0600) like every exported file");
     }

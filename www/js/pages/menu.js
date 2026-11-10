@@ -2,7 +2,7 @@ import { navigate } from "../app.js";
 import { state } from "../state.js";
 import { showAlert } from "../lib/dialogs.js";
 import { wipeAppData } from "../wipeAppData.js";
-import { uploadSensitiveNote } from "../sensitiveUpload.js";
+import { decryptSensitiveFile } from "../sensitiveDecrypt.js";
 
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
@@ -58,8 +58,8 @@ export function openMenu() {
                     </button>
                 </li>
                 <li>
-                    <button class="drawer-item" data-action="upload-sensitive" title="Decrypt a sensitive note file (.sensitive) exported by the export utility. Stays on this device: nothing is sent to Google Drive">
-                        Upload Sensitive Note
+                    <button class="drawer-item" data-action="decrypt-sensitive" title="Decrypt a sensitive note file (.sensitive) exported by the export utility. Stays on this device: nothing is sent to Google Drive">
+                        Decrypt Sensitive File
                     </button>
                 </li>`;
 
@@ -111,10 +111,10 @@ ${exportItem}${wipeItem}
         close();
         copyExportToken();
     });
-    const sensitiveBtn = wrap.querySelector('[data-action="upload-sensitive"]');
+    const sensitiveBtn = wrap.querySelector('[data-action="decrypt-sensitive"]');
     if (sensitiveBtn) sensitiveBtn.addEventListener("click", () => {
         close();
-        uploadSensitiveNote();
+        decryptSensitiveFile();
     });
     const wipeBtn = wrap.querySelector('[data-action="wipe-data"]');
     if (wipeBtn) wipeBtn.addEventListener("click", () => {

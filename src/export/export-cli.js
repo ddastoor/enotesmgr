@@ -165,7 +165,7 @@ let sensitiveCount = 0;
 function sensitiveHint() {
     if (!sensitiveCount) return;
     console.log(`\n${sensitiveCount} sensitive note(s) were saved still locked with their own note password (*.sensitive).` +
-        `\nTo read one: open eNotesMgr on a PC, menu > 'Upload Sensitive Note', pick the file and enter that note's password.`);
+        `\nTo read one: open eNotesMgr on a PC, menu > 'Decrypt Sensitive File', pick the file and enter that note's password.`);
 }
 
 // --- Drive REST (online) -----------------------------------------------------

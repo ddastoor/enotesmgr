@@ -73,7 +73,7 @@ Export CLI utility {
         }
 
         if (it is a sensitive note - its file-password-decrypted content is a sensitive envelope, see ./sensitive-notes.md) {
-            The CLI cannot open the note-password layer. Write the envelope as-is (still locked with the note password) to '<note-name>.sensitive' (e.g. 'bank.sensitive', 'photo.png.sensitive'). This check comes BEFORE the two cases above. After exporting, if any were written, tell the user how many and that they open with the app's menu > 'Upload Sensitive Note' (PC). The -x mirror is unaffected (files are copied as stored).
+            The CLI cannot open the note-password layer. Write the envelope as-is (still locked with the note password) to '<note-name>.sensitive' (e.g. 'bank.sensitive', 'photo.png.sensitive'). This check comes BEFORE the two cases above. After exporting, if any were written, tell the user how many and that they open with the app's menu > 'Decrypt Sensitive File' (PC). The -x mirror is unaffected (files are copied as stored).
         }
 
         Filenames are made filesystem-safe, and on a name collision within the output directory a numeric suffix \(e.g. " (1)"\) is added so nothing is overwritten.

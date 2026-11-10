@@ -87,6 +87,7 @@ Main page {
 
                 File selector dropdown {
                     Lists all note entries from entries folder , sorted alphabetically.
+                    A note whose metadata has "Sensitive" = "yes" (see ../sensitive-notes.md) is listed as its name followed by a padlock " 🔒"; every other note is listed by its name only, as before.
                     Always keep this list sorted alphabetically even when notes are added or removed.
                     The first entry of the list ahould be a dummy entry "" that displays by default
                     On file selection {
@@ -259,19 +260,25 @@ Main page {
                     }
                 }
 
-                'Sensitive' toggle button {
-                    On both PC and mobile. Position: between the Rename and Delete buttons.
-                    label: a padlock icon (inline SVG, open padlock when off, closed when on) followed by "Sensitive".
-                    It is a toggle (aria-pressed): when the current note is a sensitive note (see ../sensitive-notes.md) it is shown "on" (highlighted amber, closed padlock).
-                    tooltip: when off "Make this note sensitive (add an extra password)"; when on "This note is sensitive (extra password). Click to remove the extra password".
-                    disabled if {
-                        no note is currently selected (the dummy "" entry), or the note shown in the file selector is not the loaded note
-                    }
+                Sensitive 'New' button {
+                    On both PC and mobile. Position: after the Rename button, followed by the sensitive 'Upload' button, then Delete.
+                    label: a padlock icon (inline SVG) followed by "New". Styled amber so it stands apart from the ordinary New button.
+                    tooltip: "Create a new SENSITIVE note (protected by an extra password of its own)"
                     on click {
-                        if (the note is not sensitive) { make it sensitive - see ../sensitive-notes.md 'Making a note sensitive' }
-                        else { remove its extra password - see ../sensitive-notes.md 'Removing the extra password' }
+                        Create a new sensitive rich text note - see ../sensitive-notes.md 'Creating a sensitive note'. (The ordinary New button is unchanged.)
                     }
                 }
+
+                Sensitive 'Upload' button {
+                    On both PC and mobile. Position: immediately to the right of the sensitive 'New' button.
+                    label: a padlock icon (inline SVG) followed by "↑U". Styled amber like the sensitive 'New' button.
+                    tooltip: "Upload a file as a SENSITIVE note (protected by an extra password of its own)"
+                    on click {
+                        Upload a file as a new sensitive note - see ../sensitive-notes.md 'Creating a sensitive note'. (The ordinary Upload button is unchanged.)
+                    }
+                }
+
+                There is no way to turn an existing note into a sensitive note or back (a note is sensitive or not from its creation).
 
                 Delete button {
                     label: "Delete"

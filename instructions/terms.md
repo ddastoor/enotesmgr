@@ -29,7 +29,7 @@ mapping of what i say to what i mean {
 
     file password => { "file_password" entry inside the config json }
 
-    'sensitive note' => { a note the user gave an extra, per-note password - see ./sensitive-notes.md }
+    'sensitive note' => { a note created with an extra, per-note password (it stays sensitive for its whole life) - see ./sensitive-notes.md }
     'note password' => { a sensitive note's own extra password. Never stored; not covered by recovery codes. }
     'sensitive envelope' => { what the file password decrypts a sensitive note to: the marker "<<eNotesMgr-sensitive-note-v1>>" followed by the note content encrypted with the note password (base64) }
 

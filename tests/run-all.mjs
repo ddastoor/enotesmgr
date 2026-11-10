@@ -34,7 +34,7 @@ const BROWSER_SUITES = [
     { name: "recovery-lockout", desc: "never locked out, complete code sets" },
     { name: "data-safety", desc: "Drive glitches / duplicates never lose data" },
     { name: "cli-roundtrip", desc: "export CLI exports data made by the current app" },
-    { name: "sensitive-notes", desc: "sensitive notes: extra password, CLI export, Upload Sensitive Note" },
+    { name: "sensitive-notes", desc: "sensitive notes: extra password, CLI export, Decrypt Sensitive File" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
 ];

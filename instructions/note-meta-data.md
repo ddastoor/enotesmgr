@@ -19,7 +19,7 @@ un-encrypted note entry content {
 
 i.e. the un-encrypted note entry content strictly contains ONLY the actual note content. There is no metadata section embedded in it and no separating newline.
 
-Exception - sensitive notes (see ./sensitive-notes.md): what the file password decrypts to is the 'sensitive envelope' (a fixed marker + the actual note content encrypted with the note's own password). Its metadata (appProperties) is exactly the same as for the same note when it is not sensitive - there is no metadata key for "sensitive".
+Exception - sensitive notes (see ./sensitive-notes.md): what the file password decrypts to is the 'sensitive envelope' (a fixed marker + the actual note content encrypted with the note's own password). Its metadata (appProperties) is the usual set plus "Sensitive" = "yes".
 
 note metadata storage {
     The metadata is stored as Google Drive custom file properties on the entry's Drive file, using the file's "appProperties" (the application-private properties the Google Drive API provides per file). Each acceptable metadata key below is stored as one appProperties key/value pair.
@@ -37,6 +37,8 @@ acceptable metadata keys (each stored as a Google Drive file appProperties key/v
     
     "CreationMethod" { "new", "upload", "app" }
     "FileType" { "richtext", "image", "audio", "config", "settings", "recovery", a detected MIME type string, "UNKNOWN" }
+
+    "Sensitive" { "yes" } - ONLY on a sensitive note (see ./sensitive-notes.md): set when it is created with the sensitive 'New' / 'Upload' buttons and kept on every save. It is absent on every other file (normal notes, existing notes, config / settings / recovery files) - its absence means "not sensitive", so files created before this key existed need no change. It is the one exception to "every file carries the full set of keys".
 
 }
 

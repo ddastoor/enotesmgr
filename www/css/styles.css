@@ -641,14 +641,13 @@ body {
 }
 
 /* ---- Sensitive notes (extra per-note password) ------------------------------ */
-/* Toolbar toggle: padlock + "Sensitive"; highlighted (closed padlock) when on. */
-.tb-sensitive { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* Toolbar "padlock New" / "padlock ↑U": create a sensitive note. Amber, so they
+   stand apart from the ordinary New / ↑U buttons. */
+.tb-sensitive { display: inline-flex; align-items: center; justify-content: center; gap: 5px; background: #fbe7c4; color: #6b4708; }
+.tb-sensitive:hover:not(:disabled) { background: #f6d49a; }
 .tb-sensitive .lock-icon { flex: 0 0 auto; }
-.tb-sensitive:not(.is-on) .lock-shackle { transform: translate(3px, -1.5px); } /* open padlock */
-.tb-sensitive.is-on { background: #f7d9a8; color: #5a3a06; box-shadow: 0 0 0 2px #e0a84a inset; }
-.tb-sensitive.is-on:hover:not(:disabled) { background: #f2c57d; }
-:root[data-theme="dark"] .tb-sensitive.is-on { background: #5a4214; color: #ffe2b0; box-shadow: 0 0 0 2px #c99536 inset; }
-:root[data-theme="dark"] .tb-sensitive.is-on:hover:not(:disabled) { background: #6c5019; }
+:root[data-theme="dark"] .tb-sensitive { background: #4a3612; color: #ffd98f; }
+:root[data-theme="dark"] .tb-sensitive:hover:not(:disabled) { background: #5c4417; }
 
 /* Password dialogs (sensitive notes): stacked fields + a highlighted warning. */
 .pwd-input + .pwd-input { margin-top: 10px; }

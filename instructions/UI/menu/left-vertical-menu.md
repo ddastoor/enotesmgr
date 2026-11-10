@@ -44,7 +44,7 @@
                         }
                     }
                     {
-                        menu item: "Upload Sensitive Note" {
+                        menu item: "Decrypt Sensitive File" {
                             PC only - NOT shown on mobile. In the "Tools (PC only)" section, after "Copy Export Token".
                             tooltip: "Decrypt a sensitive note file (.sensitive) exported by the export utility. Stays on this device: nothing is sent to Google Drive"
                             on click {

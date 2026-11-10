@@ -10,7 +10,7 @@
 // Decryption is the reverse: file password first, then the note password.
 //
 // This module is PURE and environment-agnostic (no DOM, no fs, no crypto): it only
-// knows the envelope format, so the app, the "Upload Sensitive Note" tool and the
+// knows the envelope format, so the app, the "Decrypt Sensitive File" tool and the
 // export CLI (through noteExport.js) all agree on it.
 
 export const SENSITIVE_PREFIX = "<<eNotesMgr-sensitive-note-v1>>";
@@ -45,7 +45,7 @@ export function unwrapSensitive(text) {
     return WHOLE_RE.test(b64) ? b64 : null;
 }
 
-// Find the envelope in a file the user picked for "Upload Sensitive Note": a
+// Find the envelope in a file the user picked for "Decrypt Sensitive File": a
 // "<name>.sensitive" file written by the export CLI, or the "<name>.html" that an
 // export CLI from before this feature wrote for a sensitive note (it wrapped the
 // envelope in html). Returns the note-password ciphertext (base64), or null.

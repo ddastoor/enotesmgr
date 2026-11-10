@@ -1,7 +1,13 @@
-Sensitive notes (an optional extra per-note password) {
+Sensitive notes (an optional extra per-note password, chosen when the note is created) {
 
     Purpose {
-        The user can optionally give any note - existing or new, rich text or uploaded file - its own extra password: a 'note password'. Such a note is a 'sensitive note'. Opening it needs the note password in addition to the normal unlock (master password -> file password). The user can switch it on and off per note at any time (see 'Sensitive' toggle in ./UI/main-page.md).
+        When the user creates a NEW note - a rich text note or an uploaded file - they can create it as a 'sensitive note': it gets its own extra password, the 'note password'. Opening it needs the note password in addition to the normal unlock (master password -> file password).
+
+        A note is sensitive or normal for its WHOLE life, decided when it is born {
+            - New notes made with the ordinary 'New' / 'Upload' buttons are normal notes, exactly as before.
+            - New notes made with the sensitive 'New' / 'Upload' buttons (padlock - see ./UI/main-page.md) are sensitive notes.
+            - There is NO way to turn a normal note into a sensitive one or back. Existing notes are never touched by this feature: their content, metadata, loading, saving, downloading and export are exactly as before.
+        }
 
         It does NOT change the master password, the file password, config.json, settings.json, recovery codes or any of their flows. Recovery codes restore the master password only: a forgotten note password can NOT be recovered (the app says so when the password is chosen).
     }
@@ -13,29 +19,28 @@ Sensitive notes (an optional extra per-note password) {
             3. the envelope is encrypted with the FILE password and saved exactly like any other note (base64, same Drive file, same appProperties metadata).
         }
         Decryption is the reverse: file password first, which gives the envelope; then the note password, which gives the content.
+        This is done from the very first write (creation) and on every save, so a sensitive note is never stored in Drive without its note password.
 
         Why this order: everything that only handles the file-password layer keeps working unchanged - the export CLI (it only removes the file-password layer, so a sensitive note comes out still locked with its note password), the -x mirror, picking the right config.json by trying the notes. An exported sensitive note is protected by its note password alone.
+    }
 
-        The marker can never start an ordinary note: rich text is the editor's html (a "<" typed as text is stored as "&lt;"), uploads are data: URLs and legacy notes start with "[metadata begin]". The envelope lives INSIDE the file-password layer, which is authenticated encryption, so it can't be forged or removed by someone who can only edit the Drive file.
+    How a note is remembered as sensitive (two places) {
+        1. Its metadata: the appProperty "Sensitive" = "yes" (see ./note-meta-data.md), written when the note is created and kept on every save. Only sensitive notes have this key. The app uses it to mark the note in the file selector (its name followed by a padlock 🔒), before the note is opened.
+        2. Its content: the sensitive envelope inside the file-password layer. This is what decides how the note is decrypted, saved and exported - the export CLI's offline mode has no Drive metadata, and the envelope sits inside authenticated encryption, so it can't be forged or removed by someone who can only edit the Drive file.
 
-        No extra metadata: whether a note is sensitive is known only from its content (the envelope), not from its appProperties - Drive's clear-text metadata does not reveal which notes are sensitive. The note's metadata (DateTimeCreated/Modified, CreationMethod, FileType) stays as it is; DateTimeModified is updated whenever the note is rewritten.
+        The marker can never start an ordinary note: rich text is the editor's html (a "<" typed as text is stored as "&lt;"), uploads are data: URLs and legacy notes start with "[metadata begin]".
 
-        The note password is never stored anywhere. While a sensitive note is the open note, the app holds its password in memory (it is needed to save the note again); it is dropped when another note is opened, when the main page is left (settings, recovery codes) and on logout / session timeout. Reopening the note then asks again. Reloading the open note (Refresh, or picking it again via search) reuses the held password.
+        The note password itself is never stored anywhere. While a sensitive note is the open note, the app holds its password in memory (it is needed to save the note again); it is dropped when another note is opened, when the main page is left (settings, recovery codes) and on logout / session timeout. Reopening the note then asks again. Reloading the open note (Refresh, or picking it again via search) reuses the held password.
     }
 
     Note password rules {
         At least 8 characters (the exported '.sensitive' file is protected by this password alone). Entered twice when chosen. Not trimmed.
     }
 
-    Making a note sensitive (toggle on) {
-        Ask for the new note password (twice), warning that it can't be recovered if forgotten.
-        Rewrite the open note with both layers: rich text is taken from the editor as shown, INCLUDING unsaved changes (the dialog says so); an uploaded file is re-fetched from Drive.
-        Then delete Drive's OLDER versions of that file: Google Drive keeps the previous contents of an updated file for about 30 days, and those older versions are protected by the file password only. The current version is identified by the file's headRevisionId AND must have exactly the size of what was just written, otherwise nothing is deleted. If the older versions can't be deleted, the note is still sensitive; the user is told that Drive deletes them automatically within about 30 days.
-        If the rewrite fails, nothing changed (the note stays a normal note).
-    }
-
-    Removing the extra password (toggle off) {
-        Ask for the note's password (it must match); then rewrite the note with the file password only (rich text: as shown, including unsaved changes).
+    Creating a sensitive note {
+        Sensitive 'New' (rich text): exactly like the 'New' button (name prompt, extension stripped, 'Filename already exists', save-current-note prompt) plus, after the name, the new note password (twice) with the warning that it can't be recovered and can't be switched off later. Cancel creates nothing.
+        Sensitive 'Upload' (any file): exactly like the 'Upload' button (file dialog, type by magic number, save-current-note prompt, 'Filename already exists') plus the new note password (twice). Cancel creates nothing.
+        The note's metadata is the usual set (DateTimeCreated, DateTimeModified, CreationMethod "new" / "upload", FileType) plus "Sensitive" = "yes". It is written already locked with both passwords.
     }
 
     Opening a sensitive note {
@@ -50,18 +55,20 @@ Sensitive notes (an optional extra per-note password) {
         The note is open (unlocked), so Download gives the readable file - after a warning that the downloaded file will NOT be encrypted (OK / Cancel).
     }
 
+    Rename / Delete / Search: as for any note (the name is not secret - note names are never encrypted).
+
     Export CLI {
         See ../export-cli.md 'Output rules': a sensitive note is written as '<note-name>.sensitive' holding the envelope as-is (still locked with its note password), and the CLI tells the user how to open such files. An export CLI from before this feature wrote such a note as '<note-name>.html' wrapping the envelope; that file can be opened the same way.
     }
 
-    'Upload Sensitive Note' (PC only) {
+    'Decrypt Sensitive File' (PC only) {
         See ./UI/menu/left-vertical-menu.md. Local and stateless: pick a '.sensitive' file (or an older CLI's '.html' of a sensitive note), enter that note's password, and the decrypted note is downloaded named and formatted exactly like the export CLI / the app's Download would (same 'Output rules'): '<name>.html' for rich text, the original file (its own name and extension) for an upload. It makes NO Google Drive calls and does not change anything in the app. A file that isn't a sensitive note (including a still-encrypted -x mirror file, which also needs the master password) is refused with a message.
     }
 
     Known limits (by design) {
-        - Copies made BEFORE a note was made sensitive (earlier Downloads, CLI exports, -x mirrors) are not affected.
-        - A Download of an open sensitive note, and files decrypted with 'Upload Sensitive Note', are NOT encrypted.
+        - An existing note can't be made sensitive. To protect existing content: create a new sensitive note, copy the content in, and delete the old note - but copies of the old note made earlier (Downloads, CLI exports, -x mirrors) and Google Drive's own version history of the old file (kept about 30 days) are not affected.
+        - A Download of an open sensitive note, and files decrypted with 'Decrypt Sensitive File', are NOT encrypted.
+        - A note password can't be changed or removed.
         - Browsers can't reliably wipe JavaScript strings: while a sensitive note is open its password and content are in the page's memory (as for every open note).
-        - To change a note password: remove the extra password, then make the note sensitive again with the new one.
     }
 }

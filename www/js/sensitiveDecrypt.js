@@ -1,4 +1,4 @@
-// "Upload Sensitive Note" (menu, PC only). Decrypts a sensitive-note file that the
+// "Decrypt Sensitive File" (menu, PC only). Decrypts a sensitive-note file that the
 // export utility wrote ("<name>.sensitive": still locked with that note's own
 // password, since the utility only removes the file-password layer) and downloads
 // the readable note, named and formatted exactly like the export utility / the
@@ -15,22 +15,22 @@ import { showAlert, showPasswordPrompt, withStatus } from "./lib/dialogs.js";
 import { findSensitivePayload, sensitiveBaseName } from "./lib/sensitiveNote.js";
 import { buildNoteExport } from "./lib/noteExport.js";
 
-const TITLE = "Upload Sensitive Note";
+const TITLE = "Decrypt Sensitive File";
 
 // Open the file dialog; the rest happens once a file is picked.
-export function uploadSensitiveNote() {
+export function decryptSensitiveFile() {
     // (An input left over from a dialog that was cancelled without a "cancel"
     // event, on older browsers.)
-    const stale = document.getElementById("hidden-sensitive-upload");
+    const stale = document.getElementById("hidden-sensitive-decrypt");
     if (stale) stale.remove();
     const input = document.createElement("input");
     input.type = "file";
     input.hidden = true;
-    input.id = "hidden-sensitive-upload";
+    input.id = "hidden-sensitive-decrypt";
     input.addEventListener("change", () => {
         const file = input.files && input.files[0];
         input.remove();
-        if (file) decryptSensitiveFile(file);
+        if (file) decryptPickedFile(file);
     });
     // A cancelled dialog fires no "change": drop the input then too.
     input.addEventListener("cancel", () => input.remove());
@@ -38,7 +38,7 @@ export function uploadSensitiveNote() {
     input.click();
 }
 
-async function decryptSensitiveFile(file) {
+async function decryptPickedFile(file) {
     let payload = null;
     try {
         payload = findSensitivePayload(await file.text());
