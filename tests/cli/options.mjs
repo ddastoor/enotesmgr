@@ -13,7 +13,11 @@
 // the prompt, '-t' without a value, empty token, bad token, wrong master
 // password, -x mirror (with -t / prompt / bad token), duplicate Drive trees +
 // an older config.json with another key, a momentary Drive miss, config.json
-// missing; Node 18; usage errors.
+// missing; Node 18; usage errors; --help; and '-m sensitive' (decrypting the
+// .sensitive files: whole export folder, single file, asked-for path, bad path,
+// wrong password then right, Enter skips, not-a-sensitive-file, -x copy files,
+// an older CLI's .html exports, name clashes, no password option, ignored extra
+// flags, Node 18, password hidden in a real terminal).
 // Every successful export is checked file by file: normal notes = what the
 // app's Download gives (and, where the vault allows it, byte-for-byte what the
 // ORIGINAL CLI from git history writes); sensitive notes = "<name>.sensitive",
@@ -314,15 +318,151 @@ for (const v of Object.values(vaults)) {
     const m = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN", "-x"], "", D);
     const mroot = fs.readdirSync(m.cwd).find((d) => d.startsWith("eNotes Manager_"));
     checkExport(`[${V}] off -c -d from the -x mirror`, run(NEWCLI, ["-m", "off", "-c", path.join(m.cwd, mroot, "Config", "config.json"), "-d", path.join(m.cwd, mroot, "Entries")], `${MASTER}\n`), v, all, true);
+
+    section("  -m sensitive (decrypting the .sensitive files)");
+    const exportDirOf = (r) => path.join(r.cwd, fs.readdirSync(r.cwd).find((d) => d.startsWith("eNotes Manager Export_")));
+    const expRun = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], `${MASTER}\n`, D);
+    const expDir = exportDirOf(expRun);
+    const sensNotes = all.filter((n) => n.pw);
+    // The CLI's order: the folder's .sensitive / .html files, sorted, that hold a sensitive note.
+    const lockedIn = (dir) => fs.readdirSync(dir).filter((f) => /\.(sensitive|html?)$/i.test(f)).sort()
+        .filter((f) => S.findSensitivePayload(fs.readFileSync(path.join(dir, f), "utf8")));
+    const noteOf = (file) => {
+        const payload = S.findSensitivePayload(fs.readFileSync(file, "utf8"));
+        return sensNotes.find((n) => { try { C.decryptData(payload, n.pw); return true; } catch { return false; } });
+    };
+    const sensOut = (r) => {
+        const d = fs.readdirSync(r.cwd).find((x) => x.startsWith("eNotes Manager Sensitive_"));
+        return d ? path.join(r.cwd, d) : null;
+    };
+    // Check a -m sensitive run that decrypted `files` (paths of .sensitive files).
+    const checkDecrypt = (label, r, files) => {
+        const exp = files.map((f) => {
+            const n = noteOf(f);
+            const out = E.buildNoteExport(S.sensitiveBaseName(path.basename(f)), n.content);
+            return { n, f, filename: out.filename, bytes: Buffer.from(out.bytes) };
+        });
+        const got = Object.entries(r.files);
+        const used = new Set();
+        let matched = 0;
+        for (const e of exp) {
+            const hit = got.find(([g, b]) => !used.has(g) && clashName(e.filename, g) && Buffer.compare(b, e.bytes) === 0);
+            if (hit) { used.add(hit[0]); matched++; e.got = hit[0]; }
+        }
+        ok(r.code === 0 && matched === exp.length && got.length === exp.length,
+            `${label}: exit 0, ${exp.length} readable file(s) with the right names and bytes (got ${got.map(([g]) => g).sort().join(", ")})` + (r.code === 0 ? "" : ` (exit ${r.code}: ${r.out.slice(-300)})`));
+        for (const e of exp) {
+            const app = E.buildNoteExport(e.n.name, e.n.content); // the app's Download
+            if (E.sanitizeName(e.n.name) === e.n.name && e.got === app.filename) {
+                ok(Buffer.compare(r.files[e.got], Buffer.from(app.bytes)) === 0, `${label}: ${e.got} is byte-for-byte the app's Download of '${e.n.name}'`);
+            }
+        }
+        ok(r.out.includes(`Decrypted ${exp.length} of`) && isPrivate(r), `${label}: says 'Decrypted ${exp.length} of ...'; output private`);
+        ok(LEAKS.every((m) => !r.out.includes(m)) && sensNotes.every((n) => !r.out.includes(n.pw)), `${label}: no note content and no password printed`);
+        if (exp.length) ok(r.out.includes("NOT encrypted"), `${label}: reminds that the decrypted files are not encrypted`);
+    };
+    if (!sensNotes.length) {
+        r = run(NEWCLI, ["-m", "sensitive", "-s", expDir], "");
+        ok(r.code === 1 && r.out.includes("No sensitive notes") && !Object.keys(r.files).length, `[${V}] -m sensitive on an export without sensitive notes: says so, exit 1, nothing written`);
+        ok(!expRun.out.includes("-m sensitive"), `[${V}] export without sensitive notes: no '-m sensitive' hint`);
+    } else {
+        ok(expRun.out.includes(`-m sensitive -s "${path.basename(expDir)}"`), `[${V}] the export's hint gives the exact '-m sensitive -s' command for its folder`);
+        const files = lockedIn(expDir).map((f) => path.join(expDir, f));
+        ok(files.length === sensNotes.length && files.every((f) => noteOf(f)), `[${V}] the export folder holds ${sensNotes.length} sensitive file(s)`);
+        const pwds = files.map((f) => noteOf(f).pw);
+        checkDecrypt(`[${V}] -m sensitive -s <export folder>`, run(NEWCLI, ["-m", "sensitive", "-s", expDir], pwds.join("\n") + "\n"), files);
+        checkDecrypt(`[${V}] -m sensitive, folder asked for`, run(NEWCLI, ["-m", "sensitive"], `${expDir}\n` + pwds.join("\n") + "\n"), files);
+        const bad = path.join(HERE, "does-not-exist");
+        r = run(NEWCLI, ["-m", "sensitive", "-s", bad], `${expDir}\n` + pwds.join("\n") + "\n");
+        checkDecrypt(`[${V}] -m sensitive, bad -s path (asked again)`, r, files);
+        ok(r.out.includes("Not found: " + bad), `[${V}] -m sensitive, bad -s path: says 'Not found'`);
+        for (const f of files) {
+            checkDecrypt(`[${V}] -m sensitive -s ${path.basename(f)}`, run(NEWCLI, ["-m", "sensitive", "-s", f], noteOf(f).pw + "\n"), [f]);
+        }
+        const f0 = files[0];
+        r = run(NEWCLI, ["-m", "sensitive", "-s", f0], `WrongPass9\n${MASTER}\n${FP}\n${noteOf(f0).pw}\n`);
+        checkDecrypt(`[${V}] -m sensitive, wrong / master / file password first, then right`, r, [f0]);
+        ok((r.out.match(/Wrong password/g) || []).length === 3, `[${V}] -m sensitive: each wrong password says 'Wrong password' (master and file password don't open it)`);
+        r = run(NEWCLI, ["-m", "sensitive", "-s", expDir], files.map(() => "").join("\n") + "\n");
+        ok(r.code === 0 && !Object.keys(r.files).length && !sensOut(r) && r.out.includes(`Decrypted 0 of ${files.length}`) && r.out.includes("skipped"),
+            `[${V}] -m sensitive, Enter for every note: all skipped, exit 0, no folder created`);
+        if (files.length > 1) {
+            const mixedPw = files.map((f, i) => (i % 2 ? "" : noteOf(f).pw));
+            checkDecrypt(`[${V}] -m sensitive, some skipped`, run(NEWCLI, ["-m", "sensitive", "-s", expDir], mixedPw.join("\n") + "\n"), files.filter((f, i) => i % 2 === 0));
+        }
+        r = run(NEWCLI, ["-m", "sensitive", "-s", f0, "-p", noteOf(f0).pw], "");
+        ok(r.code === 0 && !Object.keys(r.files).length && r.out.includes("Decrypted 0 of 1"), `[${V}] -m sensitive: no password option ('-p <pw>' ignored, nothing typed -> skipped)`);
+        checkDecrypt(`[${V}] -m sensitive with -t / -x / -c / -n / -d too (ignored)`,
+            run(NEWCLI, ["-m", "sensitive", "-s", expDir, "-t", "GOODTOKEN", "-x", "-c", v.config, "-n", f0, "-d", v.notesDir], pwds.join("\n") + "\n"), files);
+        checkDecrypt(`[${V}] -m sensitive on Node 18`, run(NEWCLI, ["-m", "sensitive", "-s", expDir], pwds.join("\n") + "\n", { preload: [N18] }), files);
+        // Exports of other modes give the same .sensitive files.
+        const offRun = run(NEWCLI, ["-m", "off", "-c", v.config, "-d", v.notesDir], `${MASTER}\n`);
+        const offDir = exportDirOf(offRun);
+        ok(lockedIn(offDir).join() === lockedIn(expDir).join() && lockedIn(offDir).every((f) => Buffer.compare(fs.readFileSync(path.join(offDir, f)), fs.readFileSync(path.join(expDir, f))) === 0),
+            `[${V}] offline export: the same .sensitive files as online`);
+        // Files that are not sensitive notes.
+        const normal = fs.readdirSync(expDir).find((f) => !lockedIn(expDir).includes(f));
+        if (normal) {
+            r = run(NEWCLI, ["-m", "sensitive", "-s", path.join(expDir, normal)], "");
+            ok(r.code === 1 && r.out.includes("is not a sensitive note") && !Object.keys(r.files).length, `[${V}] -m sensitive on a normal note's export (${normal}): says so, exit 1`);
+        }
+        const mirrorNote = path.join(m.cwd, mroot, "Entries", sensNotes[0].name.replace(/[\/\\:*?"<>|]/g, "_"));
+        r = run(NEWCLI, ["-m", "sensitive", "-s", mirrorNote], "");
+        ok(r.code === 1 && r.out.includes("is not a sensitive note") && r.out.includes("-m off"), `[${V}] -m sensitive on a still-encrypted -x copy file: explains to export it with '-m off' first`);
+        // An older CLI's export (.html wrapping the locked note) decrypts the same.
+        if (V !== "clash") {
+            const oldRun = run(OLDCLI, ["-m", "on", "-t", "GOODTOKEN"], `${MASTER}\n`, D);
+            const oldDir = exportDirOf(oldRun);
+            const oldFiles = lockedIn(oldDir).map((f) => path.join(oldDir, f));
+            ok(oldFiles.length === sensNotes.length && oldFiles.every((f) => f.endsWith(".html")), `[${V}] the ORIGINAL CLI wrote the sensitive notes as .html wrappers (${oldFiles.length})`);
+            checkDecrypt(`[${V}] -m sensitive on an ORIGINAL-CLI export folder`, run(NEWCLI, ["-m", "sensitive", "-s", oldDir], oldFiles.map((f) => noteOf(f).pw).join("\n") + "\n"), oldFiles);
+            // The same note twice in one folder (new .sensitive + old .html): both
+            // decrypt, the second as "<name> (1).<ext>" - nothing overwritten.
+            const both = path.join(HERE, V + "-both");
+            fs.mkdirSync(both);
+            fs.copyFileSync(files[0], path.join(both, path.basename(files[0])));
+            const twin = oldFiles.find((f) => noteOf(f) === noteOf(files[0]));
+            fs.copyFileSync(twin, path.join(both, path.basename(twin)));
+            const bothFiles = lockedIn(both).map((f) => path.join(both, f));
+            checkDecrypt(`[${V}] -m sensitive, the same note as .sensitive and old .html (name clash)`, run(NEWCLI, ["-m", "sensitive", "-s", both], bothFiles.map((f) => noteOf(f).pw).join("\n") + "\n"), bothFiles);
+        }
+    }
 }
 
 section("\n=== usage errors ===");
-for (const [label, args] of [["no arguments", []], ["-m missing", ["-t", "GOODTOKEN"]], ["-m bogus", ["-m", "maybe"]], ["-m without a value", ["-m"]]]) {
+for (const [label, args] of [["no arguments", []], ["-m missing", ["-t", "GOODTOKEN"]], ["-m bogus", ["-m", "maybe"]], ["-m without a value", ["-m"]], ["-m ON (case)", ["-m", "ON"]]]) {
     const r = run(NEWCLI, args, "");
-    ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on' or 'off'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
+    ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on', 'off' or 'sensitive'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
+    ok(r.out.includes("-m sensitive") && r.out.includes("--help"), `${label}: usage lists '-m sensitive' and points to --help`);
     ok(r.out.includes("'-m on -x'") && r.out.includes("Config/config.json") && r.out.includes("/Entries") && r.out.includes("hidden app-data area")
         && r.out.includes("master password that was in use") && r.out.includes("Decrypt Sensitive File"),
         `${label}: usage explains where config.json comes from (a '-m on -x' copy), which master password, and .sensitive files`);
+}
+
+section("\n=== --help ===");
+const helpParts = ["USAGE", "MODES", "OPTIONS", "WHERE config.json COMES FROM", "WHAT YOU GET", "SECURITY", "EXAMPLES",
+    "-m on", "-m off", "-m sensitive", "-t <token>", "-x ", "-c <file>", "-d <folder>", "-n <file>", "-s <path>", "-h, --help",
+    "Copy Export Token", "eNotes Manager Export_<date>", "eNotes Manager_<date>", "eNotes Manager Sensitive_<date>",
+    "hidden app-data area", "Decrypt Sensitive File", "hidden prompts", "folders 700, files 600", "NOT encrypted", "never changes or deletes"];
+for (const [label, args] of [["--help", ["--help"]], ["-h", ["-h"]], ["-m on --help", ["-m", "on", "--help"]], ["-m bogus -h", ["-m", "bogus", "-h"]], ["-m sensitive -s x --help", ["-m", "sensitive", "-s", "x", "--help"]]]) {
+    const r = spawnSync(process.execPath, [NEWCLI, ...args], { cwd: fs.mkdtempSync(path.join(HERE, "help-")), input: "", encoding: "utf8" });
+    const missing = helpParts.filter((p) => !r.stdout.includes(p));
+    ok(r.status === 0 && !missing.length && !r.stderr && !r.stdout.includes("Done."), `${label}: full help on stdout, exit 0, nothing else happens` + (missing.length ? ` (missing: ${missing.join(", ")})` : ""));
+}
+
+section("\n=== -m sensitive in a real terminal: the note password is hidden ===");
+if (process.platform === "win32") {
+    console.log("  SKIP (needs a POSIX pseudo-terminal)");
+} else {
+    const work = fs.mkdtempSync(path.join(HERE, "pty-"));
+    const sfile = path.join(work, "bank.sensitive");
+    fs.writeFileSync(sfile, S.wrapSensitive(C.encryptVerified("<div>SECRET-pty</div>", "PtyNotePass1")));
+    const pty = spawnSync("python3", [path.join(CLI_DIR, "pty_sensitive.py"), NEWCLI, sfile, "PtyNotePass1", work], { encoding: "utf8" });
+    if (pty.status !== 0 && !pty.stdout) console.log("  SKIP (python3 not available): " + (pty.stderr || "").trim());
+    else {
+        ok(pty.stdout.includes("password visible on screen: False") && pty.stdout.includes("prompt shown: True") && pty.stdout.includes("decrypted: True"),
+            "the typed note password is not shown on screen, and the note is decrypted: " + pty.stdout.trim());
+    }
 }
 
 fs.rmSync(HERE, { recursive: true, force: true });

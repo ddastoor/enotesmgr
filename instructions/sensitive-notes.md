@@ -66,7 +66,8 @@ Sensitive notes (an optional extra per-note password, chosen when the note is cr
     Rename / Delete / Search: as for any note (the name is not secret - note names are never encrypted). The search popup lists a sensitive note with its padlock, like the file selector.
 
     Export CLI {
-        See ../export-cli.md 'Output rules': a sensitive note is written as '<note-name>.sensitive' holding the envelope as-is (still locked with its note password), and the CLI tells the user how to open such files. An export CLI from before this feature wrote such a note as '<note-name>.html' wrapping the envelope; that file can be opened the same way.
+        See ../export-cli.md 'Output rules': a sensitive note is written as '<note-name>.sensitive' holding the envelope as-is (still locked with its note password), and the CLI tells the user how to open such files - with the exact command for the folder it just wrote. An export CLI from before this feature wrote such a note as '<note-name>.html' wrapping the envelope; that file can be opened the same way.
+        The CLI's own '-m sensitive' mode decrypts them too (see ../export-cli.md): the same shared code and output as 'Decrypt Sensitive File' below, but fully offline - no browser, no Google sign-in, no master password. The note password is only ever typed at a hidden prompt.
     }
 
     'Decrypt Sensitive File' (PC only) {

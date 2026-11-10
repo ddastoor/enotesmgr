@@ -5,7 +5,7 @@
 //   node tests/run-all.mjs --only crypto   # one suite (repeat --only for more)
 //
 // Suites: verify, crypto, cli, sensitive, cli-options, app-core, features, framing, password-rules,
-// recovery-lockout, data-safety, cli-roundtrip, sensitive-notes, cli-matrix, media-parity, google-signin, fonts. The browser suites run against the app in ./www served by
+// recovery-lockout, data-safety, cli-roundtrip, sensitive-notes, cli-matrix, media-parity, new-user, google-signin, fonts. The browser suites run against the app in ./www served by
 // ./serve.py on a free local port, with Google sign-in stubbed and Google Drive
 // faked in memory - no real Google account is ever used.
 import { spawn, spawnSync } from "child_process";
@@ -38,6 +38,7 @@ const BROWSER_SUITES = [
     { name: "sensitive-notes", desc: "sensitive notes: extra password, CLI export, Decrypt Sensitive File" },
     { name: "cli-matrix", desc: "every CLI mode x text / embedded images x normal / sensitive" },
     { name: "media-parity", desc: "a sensitive note can do everything a normal note can" },
+    { name: "new-user", desc: "a new user: setup and normal use identical to main (before sensitive notes)" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
 ];

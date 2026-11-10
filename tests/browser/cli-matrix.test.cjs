@@ -8,7 +8,8 @@
 // in Node and with the app's "Decrypt Sensitive File" - to exactly the app's
 // Download. Modes: online (-t and token prompt), -x mirror, offline directory,
 // offline single file, offline interactive wizard (directory and single file),
-// Node 18, wrong master password, bad token.
+// Node 18, wrong master password, bad token; and the CLI's own '-m sensitive'
+// decrypting the .sensitive files to exactly the app's Download.
 // Usage: node cli-matrix.test.cjs <baseUrl>   (normally via ../run-all.mjs)
 const {
     chromium, fs, drive, driveLog, ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout,
@@ -284,6 +285,35 @@ const isPrivate = (r) => process.platform === "win32" || Object.entries(r.modes)
             `Decrypt Sensitive File: ${outName(n)} -> ${d.suggestedFilename()}, byte-for-byte the app's Download` + (n.images && n.images.length ? " (embedded images included)" : ""));
     }
     ok(driveLog.length === callsBefore, "Decrypt Sensitive File made no Google Drive calls");
+
+    console.log("6. The CLI's own '-m sensitive' (no app, no Drive): the same as 'Decrypt Sensitive File'");
+    const sens = NOTES.filter((n) => n.sensitive);
+    const pwOf = Object.fromEntries(sens.map((n) => [outName(n), n.pw]));
+    const exportDir = (run) => path.join(run.dir, fs.readdirSync(run.dir).find((d) => d.startsWith("eNotes Manager Export_")));
+    const appNames = sens.map((n) => appDownload[n.name].filename).sort();
+    const sameAsApp = (run) => sens.every((n) => run.files[appDownload[n.name].filename] && Buffer.compare(run.files[appDownload[n.name].filename], appDownload[n.name].bytes) === 0);
+    const onlineDir = exportDir(online);
+    ok(online.out.includes(`-m sensitive -s "${path.basename(onlineDir)}"`), "the online export's hint gives the exact '-m sensitive -s' command");
+    const order = sens.map(outName).sort(); // the CLI asks in file-name order
+    r = cli(["-m", "sensitive", "-s", onlineDir], order.map((f) => pwOf[f]).join("\n") + "\n");
+    ok(r.code === 0 && Object.keys(r.files).sort().join() === appNames.join() && sameAsApp(r),
+        `-m sensitive on the online export folder: ${appNames.join(", ")} - byte-for-byte the app's Download (embedded images included)`);
+    ok(isPrivate(r) && r.out.includes("Decrypted 3 of 3") && plainMarkers.every((m) => !r.out.includes(m)) && sens.every((n) => !r.out.includes(n.pw)),
+        "-m sensitive: private output, nothing secret printed");
+    for (const n of sens) {
+        r = cli(["-m", "sensitive", "-s", path.join(onlineDir, outName(n))], `WrongPass9\n${n.pw}\n`);
+        ok(r.code === 0 && Object.keys(r.files).join() === appDownload[n.name].filename && Buffer.compare(r.files[appDownload[n.name].filename], appDownload[n.name].bytes) === 0 && r.out.includes("Wrong password"),
+            `-m sensitive -s ${outName(n)} (wrong password first): ${appDownload[n.name].filename}, = the app's Download`);
+    }
+    // The whole offline chain: -x copy -> offline export -> -m sensitive.
+    const offRun = cli(["-m", "off", "-c", configPath, "-d", entriesDir], `${MASTER}\n`);
+    r = cli(["-m", "sensitive", "-s", exportDir(offRun)], order.map((f) => pwOf[f]).join("\n") + "\n");
+    ok(r.code === 0 && Object.keys(r.files).sort().join() === appNames.join() && sameAsApp(r),
+        "fully offline: -x copy -> '-m off' export -> '-m sensitive' gives the app's Downloads byte-for-byte");
+    r = cli(["-m", "sensitive", "-s", onlineDir], order.map(() => "").join("\n") + "\n");
+    ok(r.code === 0 && !Object.keys(r.files).length && r.out.includes("Decrypted 0 of 3"), "-m sensitive, Enter for each: all skipped, nothing written");
+    r = cli(["-m", "sensitive", "-s", path.join(entriesDir, "secret-text")], "");
+    ok(r.code === 1 && r.out.includes("-m off"), "-m sensitive on a still-encrypted -x copy file: explains '-m off' first");
 
     await browser.close();
     fs.rmSync(WORK, { recursive: true, force: true });

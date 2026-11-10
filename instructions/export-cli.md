@@ -12,12 +12,16 @@ Export CLI utility {
         }
     }
 
+    Help (-h or --help, anywhere on the command line) {
+        Prints the full help on stdout and exits with code 0 (nothing else happens, whatever other options are given). It documents: what the tool is (self-contained, Node 18+, the app's own crypto built in); the usage lines of every mode; each mode (-m on with / without -x, -m off, -m sensitive) and the folder each writes; every option (-t, -x, -c, -d, -n, -s, -h / --help) and which mode it belongs to (others are ignored; a missing path is asked for again); where config.json comes from (a '-m on -x' copy - the app's data is in Drive's hidden app-data area - a snapshot that opens with the master password in use when it was made); what you get (<name>.html, the original file, <name>.sensitive, " (1)" on name clashes); security (passwords and the token only at hidden prompts - deliberately no options for them; output private 700 / 600; decrypted files are not encrypted; Drive is only read); and examples of a full offline chain (-m on -x, then -m off, then -m sensitive).
+    }
+
     Usage message {
-        Shown (on stderr, exit code 1) when -m is missing or not 'on' / 'off', and when online mode gets no token. Besides the options it explains:
+        Shown (on stderr, exit code 1) when -m is missing or not 'on' / 'off' / 'sensitive', and when online mode gets no token. It ends with "Run 'node enotesmgr-export-cli.js --help' for the full help.". Besides the options of all three modes it explains:
             - online without -x exports decrypted notes into 'eNotes Manager Export_<date>'; with -x it makes the still-encrypted local copy 'eNotes Manager_<date>'.
             - offline mode works on such a local copy, made earlier with '-m on -x': -c "eNotes Manager_<date>/Config/config.json" -d "eNotes Manager_<date>/Entries". config.json can't be downloaded from the Google Drive website (the app's data is in Drive's hidden app-data area), so '-m on -x' is the way to get it.
             - the master password needed is the one in use when that copy was made.
-            - sensitive notes come out still locked as '<name>.sensitive', opened in the app (PC) with menu > 'Decrypt Sensitive File'.
+            - sensitive notes come out still locked as '<name>.sensitive', opened with '-m sensitive' or in the app (PC) with menu > 'Decrypt Sensitive File'.
     }
 
     Output directory {
@@ -25,7 +29,7 @@ Export CLI utility {
         \(The online -x mode does NOT use this directory; it creates its own 'eNotes Manager_<YYYYMMDD_HHMM>' directory - see its description below.\)
     }
 
-    It runs in two modes, selected by the command-line argument -m <on|off> {
+    It runs in three modes, selected by the command-line argument -m <on|off|sensitive> {
 
         online \(-m on\) {
             Auth is by TOKEN HAND-OFF - the tool does NO Google OAuth itself \(this is the most future-proof: the CLI has no OAuth flow to be deprecated\). The SPA already signs in \(via Google's GIS library\) and holds a live Drive access token \(drive.appdata by default, or drive.file - whichever STORAGE_MODE the app is built with\); the user copies it from the app's menu \("Copy Export Token", PC only - see ./UI/menu/left-vertical-menu.md\) and gives it to the tool. The tool then calls the Google Drive REST API directly with that token. The token is valid for about an hour; an expired/invalid token yields a clear error telling the user to re-copy it.
@@ -69,9 +73,23 @@ Export CLI utility {
             Decrypt the config.json with the master password to get the file password.
             Then decrypt the single note or every file in the directory using the file password, and write each into the output directory per 'Output rules'.
         }
+
+        sensitive \(-m sensitive\) {
+            Decrypts sensitive notes that the other two modes wrote still locked with their note password ('<name>.sensitive' - see ./sensitive-notes.md). Exactly what the app's menu > 'Decrypt Sensitive File' does, with the same shared code and the same output, but with no browser, no Google Drive and no master password - so it works fully offline (e.g. -m on -x, later -m off, then -m sensitive).
+
+            Optional command-line argument {
+                -s <path> : a single '.sensitive' file, or a folder (e.g. an 'eNotes Manager Export_<date>' folder). If omitted, or the path doesn't exist, it is asked for (re-prompted until it exists).
+            }
+
+            A folder: its '.sensitive' files and its '.html' / '.htm' files (an export CLI from before this feature wrote a sensitive note as '<name>.html' wrapping the envelope), sorted by name; only files that really hold a sensitive note count, every other file is ignored. A single file: it must hold a sensitive note, else say it is not one (a note file of a '-m on -x' copy is still locked with the master password too: export it with '-m off' first) and exit with code 1. No sensitive note found in a folder: say so, exit 1.
+
+            For each sensitive note, ask "Password for '<file>' (Enter to skip): " at a HIDDEN prompt. A wrong password says so and asks again; an empty answer skips that note. There is deliberately NO option to pass a password on the command line (it would end up in shell history / the process list). Nothing decrypted is ever printed.
+
+            Each decrypted note is written, per 'Output rules', under the file's name without '.sensitive' (or without the old '.html'): 'bank.sensitive' -> 'bank.html', 'photo.png.sensitive' -> 'photo.png' - into a new folder 'eNotes Manager Sensitive_<YYYYMMDD_HHMM>' (0700, files 0600, " (1)" on name clashes), created only when the first note is decrypted. At the end: "Decrypted N of M sensitive note(s)" (+ which were skipped) and a reminder that these files are NOT encrypted. Exit code 0 (also when notes were skipped).
+        }
     }
 
-    Output rules \(same in both modes\) {
+    Output rules \(same in the online and offline modes\) {
         Determine each note's type from its DECRYPTED CONTENT \(it is a data: URL of ANY MIME type - data:image/, data:audio/, data:video/, data:application/pdf, etc., including uploads the app recorded as "UNKNOWN" - for an uploaded file note, otherwise it is rich text html\). The type is inferred from content in BOTH modes \(Drive appProperties are not relied upon\); a leading "data:" marks an uploaded file.
 
         if (it was an uploaded file note) {
