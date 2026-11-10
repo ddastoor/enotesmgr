@@ -42,4 +42,19 @@ evil.push({ id: "evil2", name: "ESCAPED.txt", parents: ["evil1"], mimeType: "tex
 evil.push({ id: "evil3", name: ".", parents: [mgr], mimeType: "application/vnd.google-apps.folder", content: "" });
 evil.push({ id: "evil4", name: "DOT.txt", parents: ["evil3"], mimeType: "text/plain", content: "dot" });
 fs.writeFileSync("drive-evil.json", JSON.stringify(evil));
+// Duplicates, listed FIRST (as the app's data-safety rules handle them): an
+// empty second "eNotes Manager" tree, and in the real Config folder a second
+// config.json with a DIFFERENT key under the same master password that is also
+// OLDER - so only "use the copy whose key opens the notes" picks correctly.
+const dups = JSON.parse(JSON.stringify(drive));
+const realConfigFolder = dups.find((f) => f.name === "Config").id;
+dups.unshift({ id: "dupcfg", name: "config.json", parents: [realConfigFolder], mimeType: "text/plain",
+  content: m.encryptData(JSON.stringify({ file_password: "a-different-key" }), "Master123"),
+  appProperties: { DateTimeCreated: "2020-01-01T00:00", CreationMethod: "app", FileType: "config" } });
+dups.unshift({ id: "dupE", name: "Entries", parents: ["dupM"], mimeType: "application/vnd.google-apps.folder", content: "" });
+dups.unshift({ id: "dupC", name: "Config", parents: ["dupM"], mimeType: "application/vnd.google-apps.folder", content: "" });
+dups.unshift({ id: "dupM", name: "eNotes Manager", parents: ["appDataFolder"], mimeType: "application/vnd.google-apps.folder", content: "" });
+fs.writeFileSync("drive-dups.json", JSON.stringify(dups));
+// config.json genuinely missing
+fs.writeFileSync("drive-noconfig.json", JSON.stringify(drive.filter((f) => f.name !== "config.json")));
 console.log("seeded", Object.keys(notes).length, "notes");

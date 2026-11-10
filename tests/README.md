@@ -35,6 +35,8 @@ key derivation on purpose.
 | `framing` | `browser/framing.test.cjs` | the app refuses to run inside another site's frame |
 | `password-rules` | `browser/password-rules.test.cjs` | master password rules on setup and reset |
 | `recovery-lockout` | `browser/recovery-lockout.test.cjs` | never locked out: 0/1 codes left, last-code reset, complete code sets, failure handling |
+| `cli-roundtrip` | `browser/cli-roundtrip.test.cjs` | data created by the current app (notes, uploads, renames, deletes, recovery codes, a password reset) is exported by the current CLI in every mode, byte-for-byte equal to the app's own Download |
+| `google-signin` | `browser/google-signin.test.cjs` | Google's real sign-in script loads and opens its popup under the app's CSP with no violations (needs internet; skipped when offline) |
 | `data-safety` | `browser/data-safety.test.cjs` | Drive glitches and duplicate / missing files never create a second config.json, never start setup over existing data, never delete the only key to the notes |
 
 ## Notes

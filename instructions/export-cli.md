@@ -76,5 +76,13 @@ Export CLI utility {
 
         Everything the tool writes is private to the current user: directories are created with mode 0700 and files with mode 0600 \(ignored on Windows\).
         In the -x mirror, a Drive name of exactly "." or ".." is written as "_." / "_.." so nothing can ever be written outside the mirror directory.
+        In the -x mirror, same-named items in one Drive folder (Drive allows duplicates, e.g. two config.json) are all kept: the 2nd, 3rd... get " (1)", " (2)"... before the extension, so no copy overwrites another in the backup.
+
+        Finding the data in Drive (online mode, including -x) uses the SAME rules as the app (see ./data-storage.md "Never lose existing data"); the CLI only ever reads, it never creates, changes or deletes anything in Drive {
+            Before reporting the 'eNotes Manager' folder, a subfolder or config.json as missing, look again once after a short pause (~1.2 s).
+            Several 'eNotes Manager' folders: use the one with a config.json, then the most notes (the -x mirror says when others exist). Several Config / Entries folders: the one with the most items.
+            Several config.json files: of those that open with the master password, use the one whose file password opens the notes (up to 5 tried), else the oldest (DateTimeCreated), else the first.
+            No config.json at all: say so, and that unlocking in the app with a recovery code restores it.
+        }
     }
 }

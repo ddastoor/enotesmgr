@@ -1,6 +1,9 @@
 // Preload: replaces fetch with an in-memory fake Google Drive (read-only API used by the CLI).
 const fs = require("fs");
 const files = JSON.parse(fs.readFileSync(process.env.FAKE_DRIVE, "utf8"));
+// FAKE_HIDE_ONCE="name1,name2": the first lookup of each name comes back empty
+// (a simulated momentary Drive miss), later lookups find it.
+const hideOnce = new Set((process.env.FAKE_HIDE_ONCE || "").split(",").filter(Boolean));
 const FOLDER = "application/vnd.google-apps.folder";
 globalThis.fetch = async (url, opts = {}) => {
   const u = new URL(url);
@@ -13,8 +16,11 @@ globalThis.fetch = async (url, opts = {}) => {
     const nm = /name='((?:\\.|[^'\\])*)'/.exec(q);
     const name = nm ? nm[1].replace(/\\(.)/g, "$1") : null;
     const folderOnly = q.includes("mimeType='" + FOLDER + "'");
+    if (name !== null && hideOnce.delete(name)) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     const out = files.filter((f) => f.parents.includes(parent) && (name === null || f.name === name) && (!folderOnly || f.mimeType === FOLDER))
-      .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType }));
+      .map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, appProperties: f.appProperties }));
     return new Response(JSON.stringify({ files: out }), { status: 200, headers: { "content-type": "application/json" } });
   }
   if ((mm = /^\/drive\/v3\/files\/([^/]+)$/.exec(u.pathname)) && u.searchParams.get("alt") === "media") {

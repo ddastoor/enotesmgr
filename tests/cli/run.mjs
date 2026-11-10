@@ -123,7 +123,30 @@ ok(rd("photo.png").subarray(1, 4).toString() === "PNG" && rd("noext.png").subarr
 ok(rd("doc.pdf").toString().startsWith("%PDF"), "doc.pdf is the original PDF");
 ok(fs.existsSync(path.join(b.cwd, dir, "bank (1).html")), "name collision handled: 'bank (1).html'");
 
-console.log("12. Token prompt is hidden in a real terminal (pseudo-terminal)");
+console.log("12. Duplicates / glitches in Drive: the CLI picks what the app picks (read-only)");
+{
+  const dupEnv = { FAKE_DRIVE: path.join(HERE, "drive-dups.json") };
+  a = run(OLDCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", dupEnv, [FF]);
+  b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", dupEnv, [FF]);
+  const normal = tree(run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", env, [FF]).cwd);
+  ok(Object.keys(tree(a.cwd).files).length < 8, `original CLI with duplicates listed first: exported ${Object.keys(tree(a.cwd).files).length} of 8 notes (the inconsistency)`);
+  ok(b.code === 0 && same(tree(b.cwd), normal), "current CLI: all 8 notes, identical to a normal export (data tree + the config whose key opens the notes)");
+  b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN", "-x"], "", dupEnv, [FF]);
+  const mirrored = Object.keys(tree(b.cwd).files);
+  ok(b.code === 0 && b.out.includes("1 other 'eNotes Manager' folder(s) exist") && mirrored.length === 12,
+    "mirror (-x) with a duplicate tree: mirrors the data tree and says so");
+  ok(mirrored.some((f) => f.endsWith("Config/config.json")) && mirrored.some((f) => f.endsWith("Config/config (1).json")),
+    "  both config.json copies are kept in the backup ('config.json' + 'config (1).json'), none overwritten");
+  const glitchEnv = { FAKE_DRIVE: path.join(HERE, "drive.json"), FAKE_HIDE_ONCE: "eNotes Manager,Config,config.json" };
+  a = run(OLDCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", glitchEnv, [FF]);
+  b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", glitchEnv, [FF]);
+  ok(a.code !== 0, "original CLI fails on a momentary Drive miss");
+  ok(b.code === 0 && same(tree(b.cwd), normal), "current CLI looks again and exports everything");
+  b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", { FAKE_DRIVE: path.join(HERE, "drive-noconfig.json") }, [FF]);
+  ok(b.code === 1 && b.out.includes("unlock there with one of your recovery codes"), "config.json really missing: clear message pointing to the recovery-code fix");
+}
+
+console.log("13. Token prompt is hidden in a real terminal (pseudo-terminal)");
 if (process.platform === "win32") {
   console.log("  SKIP (needs a POSIX pseudo-terminal)");
 } else {

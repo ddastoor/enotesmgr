@@ -165,12 +165,86 @@ async function driveGet(url, token) {
 }
 const escQ = (s) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
-async function findChild(name, parentId, token, folderOnly) {
+// ALL items named `name` under parentId (Drive allows same-named duplicates).
+async function findChildren(name, parentId, token, folderOnly) {
     let q = `name='${escQ(name)}' and '${parentId}' in parents and trashed=false`;
     if (folderOnly) q += ` and mimeType='application/vnd.google-apps.folder'`;
-    const url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=${STORAGE.spaces}`;
+    const url = `${DRIVE}/files?q=${encodeURIComponent(q)}&fields=files(id,name,appProperties)&spaces=${STORAGE.spaces}`;
     const j = await (await driveGet(url, token)).json();
-    return j.files && j.files[0];
+    return j.files || [];
+}
+
+// --- choosing folders / config.json the SAME way the app does --------------
+// (www/js/flow.js and www/js/pages/masterPassword.js; see
+// instructions/data-storage.md "Never lose existing data"). With exactly one of
+// each - the normal case - this is simply that one. The CLI only reads.
+const RECHECK_DELAY_MS = 1200;
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// If nothing is found, look again once after a short pause (a momentary Drive
+// miss must not make the export fail or pick the wrong thing).
+async function findAllConfirmed(name, parentId, token, folderOnly) {
+    const found = await findChildren(name, parentId, token, folderOnly);
+    if (found.length) return found;
+    await pause(RECHECK_DELAY_MS);
+    return findChildren(name, parentId, token, folderOnly);
+}
+
+// The "eNotes Manager" tree holding the data: one with a config.json first,
+// then the most notes; ties: the first listed. Returns { manager, others }.
+async function pickManager(token) {
+    const managers = await findAllConfirmed("eNotes Manager", STORAGE.rootParent, token, true);
+    if (!managers.length) throw new Error("Could not find the 'eNotes Manager' folder for this account.");
+    if (managers.length === 1) return { manager: managers[0], others: 0 };
+    let best = managers[0], bestScore = -1;
+    for (const m of managers) {
+        let score = 0;
+        const cfg = (await findChildren("Config", m.id, token, true))[0];
+        if (cfg && (await findChildren("config.json", cfg.id, token, false)).length) score += 1e6;
+        const ent = (await findChildren("Entries", m.id, token, true))[0];
+        if (ent) score += (await listChildren(ent.id, token)).length;
+        if (score > bestScore) { best = m; bestScore = score; }
+    }
+    return { manager: best, others: managers.length - 1 };
+}
+
+// A subfolder of the tree; of duplicates, the one with the most items.
+async function pickSubfolder(name, managerId, token) {
+    const found = await findAllConfirmed(name, managerId, token, true);
+    if (found.length <= 1) return found[0];
+    let best = found[0], bestCount = -1;
+    for (const f of found) {
+        const n = (await listChildren(f.id, token)).length;
+        if (n > bestCount) { best = f; bestCount = n; }
+    }
+    return best;
+}
+
+// The file password, from the config.json copies (normally exactly one). Of the
+// copies that open with the master password: the one whose key opens the notes
+// (up to 5 tried), else the oldest (DateTimeCreated), else the first.
+async function pickFilePassword(configFiles, entries, token) {
+    const master = await promptHidden("Master password (hidden): ");
+    const opened = [];
+    for (const f of configFiles) {
+        try {
+            const fp = JSON.parse(decryptData(await downloadText(f.id, token), master)).file_password;
+            if (typeof fp === "string" && fp) opened.push({ f, fp });
+        } catch { /* not this password's copy */ }
+    }
+    if (!opened.length) throw new Error("Could not decrypt config.json — wrong master password or wrong/corrupt config file.");
+    const byAge = [...opened].sort((a, b) =>
+        ((a.f.appProperties || {}).DateTimeCreated || "9999").localeCompare((b.f.appProperties || {}).DateTimeCreated || "9999"));
+    const keys = [...new Set(opened.map((o) => o.fp))];
+    if (keys.length > 1) {
+        for (const e of entries.slice(0, 5)) {
+            let cipher;
+            try { cipher = await downloadText(e.id, token); } catch { continue; }
+            const opens = keys.filter((k) => { try { decryptData(cipher, k); return true; } catch { return false; } });
+            if (opens.length === 1) return opens[0];
+        }
+    }
+    return byAge[0].fp;
 }
 
 async function listChildren(parentId, token) {
@@ -191,9 +265,6 @@ const downloadText = async (id, token) => (await driveGet(`${DRIVE}/files/${id}?
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
-// Recursively mirror a Drive folder subtree onto the LOCAL filesystem under
-// `destDir`, downloading each file AS-IS (its stored encrypted ciphertext, not
-// decrypted) and recreating subfolders. Returns the number of files written.
 // A Drive name used as a local path component. sanitizeName strips slashes, but
 // a name of exactly "." or ".." would still point at the current / PARENT
 // folder and let the mirror write outside its destination, so prefix those.
@@ -202,14 +273,30 @@ function localName(name) {
     return safe === "." || safe === ".." ? "_" + safe : safe;
 }
 
+// Recursively mirror a Drive folder subtree onto the LOCAL filesystem under
+// `destDir`, downloading each file AS-IS (its stored encrypted ciphertext, not
+// decrypted) and recreating subfolders. Returns the number of files written.
+// Drive allows same-named items in one folder (e.g. two config.json): they are
+// all kept, the 2nd, 3rd... getting " (1)", " (2)"... before the extension, so
+// no copy silently overwrites another in the backup.
 async function replicateTreeLocal(srcId, destDir, token) {
     mkdirSync(destDir, { recursive: true, mode: DIR_MODE });
+    const used = new Set();
+    const nameFor = (driveName) => {
+        const base = localName(driveName);
+        if (!used.has(base)) { used.add(base); return base; }
+        const ext = extname(base), stem = base.slice(0, base.length - ext.length);
+        for (let i = 1; ; i++) {
+            const candidate = `${stem} (${i})${ext}`;
+            if (!used.has(candidate)) { used.add(candidate); return candidate; }
+        }
+    };
     let count = 0;
     for (const c of await listChildren(srcId, token)) {
         if (c.mimeType === FOLDER_MIME) {
-            count += await replicateTreeLocal(c.id, join(destDir, localName(c.name)), token);
+            count += await replicateTreeLocal(c.id, join(destDir, nameFor(c.name)), token);
         } else {
-            writeFileSync(join(destDir, localName(c.name)), await downloadText(c.id, token), { encoding: "utf8", mode: FILE_MODE });
+            writeFileSync(join(destDir, nameFor(c.name)), await downloadText(c.id, token), { encoding: "utf8", mode: FILE_MODE });
             count++;
         }
     }
@@ -233,17 +320,16 @@ async function runOnline(args) {
     const rootDir = makeRootDir();
     console.log("Output directory: " + rootDir);
 
-    const manager = await findChild("eNotes Manager", STORAGE.rootParent, token, true);
-    if (!manager) throw new Error("Could not find the 'eNotes Manager' folder for this account.");
-    const configFolder = await findChild("Config", manager.id, token, true);
-    const entriesFolder = await findChild("Entries", manager.id, token, true);
+    const { manager } = await pickManager(token);
+    const configFolder = await pickSubfolder("Config", manager.id, token);
+    const entriesFolder = await pickSubfolder("Entries", manager.id, token);
     if (!configFolder || !entriesFolder) throw new Error("Config/Entries folder missing.");
 
-    const configFile = await findChild("config.json", configFolder.id, token, false);
-    if (!configFile) throw new Error("config.json not found.");
-    const filePassword = await unlockFilePassword(await downloadText(configFile.id, token));
-
+    const configFiles = await findAllConfirmed("config.json", configFolder.id, token, false);
+    if (!configFiles.length) throw new Error("config.json not found. If the app also says 'Config file missing', unlock there with one of your recovery codes first: that restores it.");
     const entries = await listChildren(entriesFolder.id, token);
+    const filePassword = await pickFilePassword(configFiles, entries, token);
+
     console.log(`Found ${entries.length} note(s). Exporting...`);
     for (const e of entries) {
         try {
@@ -259,8 +345,8 @@ async function runOnline(args) {
 // onto the LOCAL device into a dated folder 'eNotes Manager_<YYYYMMDD_HHMM>',
 // preserving the folder structure and file contents.
 async function runReplicate(token) {
-    const src = await findChild("eNotes Manager", STORAGE.rootParent, token, true);
-    if (!src) throw new Error("Could not find the 'eNotes Manager' folder for this account.");
+    const { manager: src, others } = await pickManager(token);
+    if (others) console.log(`Note: ${others} other 'eNotes Manager' folder(s) exist; mirroring the one that holds your data (the same one the app uses).`);
     const destDir = `eNotes Manager_${stamp()}`;
     console.log(`Replicating Drive 'eNotes Manager' -> local '${destDir}' (encrypted, as-is)...`);
     const n = await replicateTreeLocal(src.id, destDir, token);

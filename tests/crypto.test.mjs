@@ -25,6 +25,11 @@ for (const text of ["hello", "", "héllo ✓ café", "x".repeat(100000)]) {
 const a = m.encryptData("same", "pw"), b = m.encryptData("same", "pw");
 ok(a !== b, "same text + password encrypts differently each time (random salt + nonce)");
 ok(m.decryptData(m.encryptVerified("v", "pw"), "pw") === "v", "encryptVerified works");
+// Stored format guard: salt (16) + nonce (24) + Poly1305 tag (16) = 56 bytes on
+// top of the plaintext. A different overhead means a format change that would
+// break reading existing data.
+ok([["", 56], ["abc", 59], ["héllo", 62]].every(([t, n]) => Buffer.from(m.encryptData(t, "pw"), "base64").length === n),
+    "ciphertext format unchanged: 16-byte salt + 24-byte nonce + 16-byte tag + plaintext");
 let msg = ""; try { m.decryptData(a, "wrong"); } catch (e) { msg = e.message; }
 ok(msg === "Bad password or corrupted ciphertext", "wrong password is rejected");
 const raw = Buffer.from(a, "base64"); raw[raw.length - 1] ^= 1;
