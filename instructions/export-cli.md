@@ -12,6 +12,14 @@ Export CLI utility {
         }
     }
 
+    Usage message {
+        Shown (on stderr, exit code 1) when -m is missing or not 'on' / 'off', and when online mode gets no token. Besides the options it explains:
+            - online without -x exports decrypted notes into 'eNotes Manager Export_<date>'; with -x it makes the still-encrypted local copy 'eNotes Manager_<date>'.
+            - offline mode works on such a local copy, made earlier with '-m on -x': -c "eNotes Manager_<date>/Config/config.json" -d "eNotes Manager_<date>/Entries". config.json can't be downloaded from the Google Drive website (the app's data is in Drive's hidden app-data area), so '-m on -x' is the way to get it.
+            - the master password needed is the one in use when that copy was made.
+            - sensitive notes come out still locked as '<name>.sensitive', opened in the app (PC) with menu > 'Decrypt Sensitive File'.
+    }
+
     Output directory {
         For the decrypted-export operations \(online without -x, and offline\), the tool creates a timestamped directory named 'eNotes Manager Export_<YYYYMMDD_HHMM>' in the current directory and writes all exported notes there.
         \(The online -x mode does NOT use this directory; it creates its own 'eNotes Manager_<YYYYMMDD_HHMM>' directory - see its description below.\)

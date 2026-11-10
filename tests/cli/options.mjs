@@ -320,6 +320,9 @@ section("\n=== usage errors ===");
 for (const [label, args] of [["no arguments", []], ["-m missing", ["-t", "GOODTOKEN"]], ["-m bogus", ["-m", "maybe"]], ["-m without a value", ["-m"]]]) {
     const r = run(NEWCLI, args, "");
     ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on' or 'off'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
+    ok(r.out.includes("'-m on -x'") && r.out.includes("Config/config.json") && r.out.includes("/Entries") && r.out.includes("hidden app-data area")
+        && r.out.includes("master password that was in use") && r.out.includes("Decrypt Sensitive File"),
+        `${label}: usage explains where config.json comes from (a '-m on -x' copy), which master password, and .sensitive files`);
 }
 
 fs.rmSync(HERE, { recursive: true, force: true });

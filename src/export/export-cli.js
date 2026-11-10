@@ -65,11 +65,22 @@ function usageExit(msg) {
     console.error(
         "Usage:\n" +
         "  Online:  node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]\n" +
-        "           (get the token from the app menu: 'Copy Export Token')\n" +
-        "           (-x: download the whole 'eNotes Manager' Drive folder as a\n" +
-        "            dated, still-encrypted LOCAL backup, then exit)\n" +
+        "           (get the token from the app menu: 'Copy Export Token' - PC only,\n" +
+        "            valid about 1 hour; without -t you are asked to paste it)\n" +
+        "           without -x: export all notes, decrypted, into 'eNotes Manager Export_<date>'\n" +
+        "           with -x:    download the whole 'eNotes Manager' Drive folder as a dated,\n" +
+        "                       still-encrypted LOCAL copy 'eNotes Manager_<date>', then exit\n" +
         "  Offline: node enotesmgr-export-cli.js -m off   (interactive wizard; optionally\n" +
-        "           pre-fill with -c <config.json> and -n <note-file> | -d <notes-dir>)\n"
+        "           pre-fill with -c <config.json> and -n <note-file> | -d <notes-dir>)\n" +
+        "           Works on a local copy made earlier with '-m on -x' (no internet needed):\n" +
+        "             -c \"eNotes Manager_<date>/Config/config.json\"\n" +
+        "             -d \"eNotes Manager_<date>/Entries\"\n" +
+        "           config.json is not downloadable from the Google Drive website (the app\n" +
+        "           keeps its data in Drive's hidden app-data area): '-m on -x' is the way.\n" +
+        "           Use the master password that was in use when that copy was made.\n" +
+        "\n" +
+        "Sensitive notes are exported still locked with their own password, as <name>.sensitive:\n" +
+        "open them in the app on a PC with menu > 'Decrypt Sensitive File'.\n"
     );
     process.exit(1);
 }
