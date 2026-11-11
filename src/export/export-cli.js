@@ -14,6 +14,12 @@
 //   sensitive (-m sensitive): decrypt "<name>.sensitive" files (sensitive notes
 //                       that the other modes wrote still locked with their own
 //                       note password) - asks each note's password.
+//   export    (-m export) / import (-m import): move all notes to another
+//                       account. Export writes every note EXACTLY as the app
+//                       stores it (name, metadata, content) into transfer files
+//                       locked with the account's master password; import adds
+//                       them to another account as they were. Import is the only
+//                       mode that writes to Drive, and it only ever ADDS notes.
 //
 // Online auth = token hand-off (no OAuth in the CLI, the most future-proof
 // option): the SPA already signs in via Google's maintained GIS library and
@@ -22,18 +28,19 @@
 // Token", PC-only) and pastes it here (or passes -t <token>). The CLI just calls
 // the Drive REST API with that token — so it has zero OAuth surface to be
 // deprecated, and needs no client id, secret, or redirect URI.
-import { cryptoReady, decryptData } from "../../www/js/crypto/crypto.js";
+import { cryptoReady, decryptData, encryptVerified } from "../../www/js/crypto/crypto.js";
 // The note -> output-file decision (type, filename, html wrapping, byte decoding)
 // is shared with the in-app Download button so the two produce identical output.
 import { buildNoteExport, sanitizeName } from "../../www/js/lib/noteExport.js";
 import { isSensitiveContent, findSensitivePayload, sensitiveBaseName } from "../../www/js/lib/sensitiveNote.js";
 import {
-    mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync,
+    mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync,
 } from "node:fs";
 import { join, basename, extname } from "node:path";
 import readline from "node:readline";
 
 const DRIVE = "https://www.googleapis.com/drive/v3";
+const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
 // WHERE the "eNotes Manager" tree lives in Drive. Must match the web app's
 // www/js/lib/driveConfig.js (the CLI keeps its own copy because it is a
@@ -85,6 +92,9 @@ const USAGE =
     "             decrypt sensitive notes, which the modes above export still locked with\n" +
     "             their own password as <name>.sensitive (asks each note's password).\n" +
     "             In the app (PC): menu > 'Decrypt Sensitive File' does the same.\n" +
+    "  Move all notes to another account (online; everything is asked):\n" +
+    "             node enotesmgr-export-cli.js -m export   (logged in as the OLD account)\n" +
+    "             node enotesmgr-export-cli.js -m import   (logged in as the NEW account)\n" +
     "  Help:      node enotesmgr-export-cli.js --help\n";
 
 function usageExit(msg) {
@@ -104,6 +114,8 @@ USAGE
   node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]
   node enotesmgr-export-cli.js -m off [-c <config.json>] [-n <note-file> | -d <notes-folder>]
   node enotesmgr-export-cli.js -m sensitive [-s <file.sensitive | folder>]
+  node enotesmgr-export-cli.js -m export
+  node enotesmgr-export-cli.js -m import
   node enotesmgr-export-cli.js -h | --help
 
 MODES
@@ -130,6 +142,30 @@ MODES
                 'eNotes Manager Sensitive_<date>'. No Google Drive, no master
                 password. (In the app, on a PC: menu > 'Decrypt Sensitive File'
                 does the same.)
+  -m export     Online: save ALL notes of an account for moving them to
+                another account. Every note is saved exactly as the app stores
+                it - its name, content and all its details (type, dates,
+                sensitive or not) - one file per note, in a new folder
+                'eNotes Manager Transfer_<date>' inside the folder you give.
+                Each file is locked with this account's master password, so
+                the folder is as safe as your notes in Google Drive (sensitive
+                notes stay locked with their own note password too). Asks for
+                the folder, the export token (in the app, logged in with this
+                account: menu > 'Copy Export Token') and the master password.
+                Only reads Google Drive.
+  -m import     Online: add the notes of such a transfer folder to an account
+                (set the account up in the app first) - each note exactly as it
+                was: same name, content and details, as if made there by hand.
+                Asks for the transfer folder, the master password of the OLD
+                account (that locked the files), the export token of the NEW
+                account (in the app, logged in with it: menu > 'Copy Export
+                Token'), the NEW account's master password, and a final yes.
+                Only the folder's own transfer files are read (sub-folders and
+                other files are ignored). A note that is already there,
+                identical, is skipped - so running it again adds nothing twice;
+                any other note whose name is taken gets " (1)", " (2)"...
+                before its extension. Existing notes are never changed or
+                deleted.
 
 OPTIONS
   -t <token>    (on) the export token. Without -t you are asked to paste it
@@ -142,6 +178,7 @@ OPTIONS
   -s <path>     (sensitive) a .sensitive file, or a folder holding them (e.g. an
                 'eNotes Manager Export_<date>' folder). Without -s you are asked.
   -h, --help    show this help.
+  '-m export' and '-m import' take no options: everything is asked.
   Options that don't apply to the chosen mode are ignored. A path that doesn't
   exist is asked for again.
 
@@ -168,8 +205,8 @@ SECURITY
   - Everything written is private to you (folders 700, files 600; except on
     Windows, which doesn't use these permissions).
   - Decrypted files are NOT encrypted: delete them when you no longer need them.
-  - The utility only reads from Google Drive; it never changes or deletes
-    anything there.
+  - Only '-m import' writes to Google Drive, and it only adds new notes: the
+    utility never changes or deletes anything there.
 
 EXAMPLES
   Export everything from Drive, decrypted:
@@ -180,6 +217,12 @@ EXAMPLES
       node enotesmgr-export-cli.js -m off -c "eNotes Manager_20260110_0930/Config/config.json" -d "eNotes Manager_20260110_0930/Entries"
   Then decrypt the sensitive notes it wrote:
       node enotesmgr-export-cli.js -m sensitive -s "eNotes Manager Export_20260110_0945"
+  Move all your notes to another account:
+      node enotesmgr-export-cli.js -m export
+          (asks: a folder, token + master password of the OLD account)
+      node enotesmgr-export-cli.js -m import
+          (asks: the transfer folder, the OLD master password,
+           token + master password of the NEW account)
 `;
 
 // --- prompts -----------------------------------------------------------------
@@ -344,8 +387,10 @@ async function pickSubfolder(name, managerId, token) {
 // The file password, from the config.json copies (normally exactly one). Of the
 // copies that open with the master password: the one whose key opens the notes
 // (up to 5 tried), else the oldest (DateTimeCreated), else the first.
-async function pickFilePassword(configFiles, entries, token) {
-    const master = await promptHidden("Master password (hidden): ");
+// opts.master: the master password, already asked by the caller (export /
+// import label the prompt themselves); otherwise it is asked here.
+async function pickFilePassword(configFiles, entries, token, opts = {}) {
+    const master = opts.master !== undefined ? opts.master : await promptHidden("Master password (hidden): ");
     const opened = [];
     for (const f of configFiles) {
         try {
@@ -594,6 +639,208 @@ async function unlockFilePassword(configCipher) {
     }
 }
 
+// --- moving notes to another account: -m export / -m import ------------------
+// A transfer file holds ONE note exactly as the app stores it: its name, its
+// appProperties (metadata, or null for a note from before the metadata existed)
+// and its content after the file-password layer is removed (a sensitive note's
+// content is its envelope, still locked with its note password). The note is
+// JSON, encrypted (verified) with the exporting account's master password; a
+// plain first line marks the file as a transfer file (it reveals nothing).
+const TRANSFER_HEADER = "eNotesMgr transfer v1";
+const TRANSFER_FORMAT = "eNotesMgr transfer";
+const TRANSFER_EXT = ".enotes";
+
+function isTransferFile(p) {
+    try {
+        const head = Buffer.alloc(TRANSFER_HEADER.length + 1);
+        const fd = openSync(p, "r");
+        try { readSync(fd, head, 0, head.length, 0); } finally { closeSync(fd); }
+        return head.toString("utf8") === TRANSFER_HEADER + "\n";
+    } catch { return false; }
+}
+function readTransferFile(p, masterPassword) {
+    const cipher = readFileSync(p, "utf8").slice(TRANSFER_HEADER.length + 1).trim();
+    const rec = JSON.parse(decryptData(cipher, masterPassword));
+    if (rec.format !== TRANSFER_FORMAT || rec.version !== 1 || typeof rec.name !== "string" || typeof rec.content !== "string") {
+        throw new Error("not a version-1 transfer file");
+    }
+    return rec;
+}
+
+// Find the account's data like every online mode (same duplicate / glitch rules).
+async function accountData(token) {
+    const user = ((await (await driveGet(`${DRIVE}/about?fields=user`, token)).json()).user) || {};
+    const account = user.emailAddress || "this account";
+    let manager;
+    try { ({ manager } = await pickManager(token)); } catch {
+        throw new Error(`${account} has no eNotesMgr data yet: open the app once with this account and set it up first.`);
+    }
+    const configFolder = await pickSubfolder("Config", manager.id, token);
+    const entriesFolder = await pickSubfolder("Entries", manager.id, token);
+    const configFiles = configFolder ? await findAllConfirmed("config.json", configFolder.id, token, false) : [];
+    if (!entriesFolder || !configFiles.length) {
+        throw new Error(`${account}'s eNotesMgr data is incomplete (no Entries folder or config.json): unlock the app once with this account (a recovery code restores config.json).`);
+    }
+    return { account, entriesFolder, configFiles, existing: await listChildren(entriesFolder.id, token) };
+}
+
+async function runExportForTransfer() {
+    console.log("Export for moving notes (-m export): saves every note of an account, exactly as stored, locked with its master password. (Other options are ignored.)");
+    const parent = await resolvePath(null, "Folder to save the transfer folder in: ", isDir, "Folder not found");
+    const token = (await promptHidden("Paste the export token of the account to export (in the app, logged in with that account: menu > 'Copy Export Token') (hidden): ")).trim();
+    if (!token) throw new Error("Export needs an export token.");
+    const { account, configFiles, existing } = await accountData(token);
+    console.log(`Exporting the eNotesMgr notes of ${account} (${existing.length} note(s)).`);
+    const master = await promptHidden(`Master password of ${account} (hidden): `);
+    const filePassword = await pickFilePassword(configFiles, existing, token, { master });
+
+    let dir = join(parent, `eNotes Manager Transfer_${stamp()}`);
+    for (let i = 1; existsSync(dir); i++) dir = join(parent, `eNotes Manager Transfer_${stamp()} (${i})`);
+    mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+    console.log("Transfer folder: " + dir);
+    let done = 0, sensitive = 0;
+    const failed = [];
+    for (const [i, e] of existing.entries()) {
+        try {
+            const content = decryptData(await downloadText(e.id, token), filePassword);
+            const rec = { format: TRANSFER_FORMAT, version: 1, name: e.name, appProperties: e.appProperties || null, content };
+            const file = join(dir, `note-${String(i + 1).padStart(4, "0")}${TRANSFER_EXT}`);
+            writeFileSync(file, `${TRANSFER_HEADER}\n${encryptVerified(JSON.stringify(rec), master)}\n`, { mode: FILE_MODE });
+            done++;
+            if (isSensitiveContent(content)) sensitive++;
+        } catch (err) {
+            failed.push(e.name);
+            console.warn(`  SKIPPED a note: ${err.message}`);
+        }
+    }
+    console.log(`\nExported ${done} of ${existing.length} note(s)` + (sensitive ? ` (${sensitive} sensitive)` : "") + ` into '${dir}'.` +
+        (failed.length ? ` Not exported: ${failed.length}.` : "") +
+        `\nThe files are locked with the master password of ${account}.` +
+        "\nTo add them to another account: set that account up in the app, log in with it, menu > 'Copy Export Token', then:" +
+        "\n  node enotesmgr-export-cli.js -m import");
+    if (failed.length) process.exitCode = 1;
+}
+
+// "bank" taken -> "bank (1)"; "photo.png" taken -> "photo (1).png".
+function freeNoteName(name, taken) {
+    if (!taken.has(name)) return name;
+    const ext = extname(name), stem = name.slice(0, name.length - ext.length);
+    for (let i = 1; ; i++) {
+        const candidate = `${stem} (${i})${ext}`;
+        if (!taken.has(candidate)) return candidate;
+    }
+}
+const sameProps = (a, b) => {
+    const norm = (x) => JSON.stringify(Object.entries(x || {}).sort(([k1], [k2]) => (k1 < k2 ? -1 : k1 > k2 ? 1 : 0)));
+    return norm(a) === norm(b);
+};
+
+// Create a new text file in Drive (the same multipart create the app uses).
+async function driveCreate(name, content, parentId, appProperties, token) {
+    const boundary = "enotes_boundary_" + Math.random().toString(36).slice(2);
+    const metadata = { name, parents: [parentId], mimeType: "text/plain" };
+    if (appProperties) metadata.appProperties = appProperties;
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+        `--${boundary}\r\nContent-Type: text/plain\r\n\r\n${content}\r\n--${boundary}--`;
+    const r = await fetch(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,name`, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": `multipart/related; boundary=${boundary}` },
+        body,
+    });
+    if (r.status === 401) throw new Error("Drive rejected the export token (expired or invalid).");
+    if (!r.ok) throw new Error(`Drive did not save it (${r.status})`);
+    return r.json();
+}
+
+async function runImportFromTransfer() {
+    console.log("Import (-m import): adds the notes of a '-m export' transfer folder to an account, exactly as they were. (Other options are ignored.)");
+    const dir = await resolvePath(null, "Transfer folder to import (made by '-m export'): ", isDir, "Folder not found");
+    // Only the folder's own transfer files (top level); everything else is ignored.
+    const files = [], ignored = [];
+    for (const f of readdirSync(dir).sort()) {
+        const p = join(dir, f);
+        const st = statSync(p);
+        if (st.isDirectory()) ignored.push(`${f}/ (a sub-folder)`);
+        else if (!st.isFile() || !isTransferFile(p)) ignored.push(`${f} (not a transfer file)`);
+        else files.push(f);
+    }
+    ignored.forEach((x) => console.log("  ignoring " + x));
+    if (!files.length) throw new Error(`No transfer files (made by '-m export') in '${dir}'.`);
+    console.log(`Found ${files.length} exported note(s).`);
+
+    const oldMaster = await promptHidden("Master password of the OLD account - the one these notes were exported from (hidden): ");
+    const recs = [], unreadable = [];
+    for (const f of files) {
+        try { recs.push({ file: f, ...readTransferFile(join(dir, f), oldMaster) }); } catch { unreadable.push(f); }
+    }
+    if (!recs.length) {
+        throw new Error("None of the transfer files opens with that password. Use the master password the OLD account had when they were exported.");
+    }
+    if (unreadable.length) console.log(`  ${unreadable.length} file(s) don't open with that password (exported with another password, or damaged) and are skipped: ${unreadable.join(", ")}`);
+
+    const token = (await promptHidden("Paste the export token of the NEW account (in the app, logged in with it: menu > 'Copy Export Token') (hidden): ")).trim();
+    if (!token) throw new Error("Import needs an export token.");
+    const { account, entriesFolder, configFiles, existing } = await accountData(token);
+    console.log(`Importing into the eNotesMgr notes of ${account} (${existing.length} note(s) there now).`);
+    const newMaster = await promptHidden(`Master password of ${account} - the NEW account (hidden): `);
+    const filePassword = await pickFilePassword(configFiles, existing, token, { master: newMaster });
+
+    // Already there? The same note - name (or a " (n)" copy of it), details and
+    // content - is not added again, so a re-run (e.g. after a failure) adds only
+    // what is missing.
+    const plain = new Map(); // existing note id -> its content
+    const contentOf = async (e) => {
+        if (!plain.has(e.id)) {
+            let c = null;
+            try { c = decryptData(await downloadText(e.id, token), filePassword); } catch { /* unreadable: not identical */ }
+            plain.set(e.id, c);
+        }
+        return plain.get(e.id);
+    };
+    const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const toAdd = [];
+    let already = 0;
+    for (const rec of recs) {
+        const ext = extname(rec.name), stem = rec.name.slice(0, rec.name.length - ext.length);
+        const copy = new RegExp(`^${esc(stem)} \\(\\d+\\)${esc(ext)}$`);
+        let found = false;
+        for (const e of existing.filter((x) => x.name === rec.name || copy.test(x.name))) {
+            if (sameProps(e.appProperties, rec.appProperties) && (await contentOf(e)) === rec.content) { found = true; break; }
+        }
+        if (found) already++; else toAdd.push(rec);
+    }
+    console.log(`${toAdd.length} note(s) to add` + (already ? `, ${already} already there (identical - skipped)` : "") + ".");
+    if (!toAdd.length) {
+        console.log("Nothing to import: every note is already there.");
+        if (unreadable.length) process.exitCode = 1;
+        return;
+    }
+    const answer = (await promptVisible(`Add these ${toAdd.length} note(s) to ${account}? (y/N): `)).toLowerCase();
+    if (answer !== "y" && answer !== "yes") {
+        console.log("Nothing imported.");
+        return;
+    }
+    const taken = new Set(existing.map((e) => e.name));
+    let done = 0;
+    const failed = [];
+    for (const rec of toAdd) {
+        const name = freeNoteName(rec.name, taken);
+        try {
+            const cipher = encryptVerified(rec.content, filePassword); // never store what wouldn't decrypt
+            await driveCreate(name, cipher, entriesFolder.id, rec.appProperties, token);
+            taken.add(name);
+            done++;
+            console.log(`  imported '${name}'` + (name !== rec.name ? ` (the name '${rec.name}' was taken)` : ""));
+        } catch (err) {
+            failed.push(rec.name);
+            console.warn(`  FAILED '${rec.name}': ${err.message}`);
+        }
+    }
+    console.log(`\nImported ${done} of ${toAdd.length} note(s) into ${account}.` + (already ? ` ${already} were already there.` : "") +
+        (failed.length ? ` Not imported: ${failed.join(", ")} - run the import again to add them.` : "") + "\nReload the app to see them.");
+    if (failed.length || unreadable.length) process.exitCode = 1;
+}
+
 // --- main --------------------------------------------------------------------
 async function main() {
     const args = parseArgs(process.argv.slice(2));
@@ -601,20 +848,23 @@ async function main() {
         process.stdout.write(HELP);
         return;
     }
-    if (!["on", "off", "sensitive"].includes(args.m)) usageExit("-m must be 'on', 'off' or 'sensitive'.");
+    if (!["on", "off", "sensitive", "export", "import"].includes(args.m)) usageExit("-m must be 'on', 'off', 'sensitive', 'export' or 'import'.");
 
     await cryptoReady;
 
     if (args.m === "on") await runOnline(args);
     else if (args.m === "off") await runOffline(args);
-    else await runSensitive(args);
+    else if (args.m === "sensitive") await runSensitive(args);
+    else if (args.m === "export") await runExportForTransfer();
+    else await runImportFromTransfer();
 
     console.log("Done.");
 }
 
 main()
     .catch((err) => {
-        console.error("\nExport failed: " + (err && err.message ? err.message : err));
+        const importing = process.argv.slice(2).join(" ").includes("-m import");
+        console.error(`\n${importing ? "Import" : "Export"} failed: ` + (err && err.message ? err.message : err));
         process.exitCode = 1;
     })
     .finally(closeRl); // release stdin so the process can exit
