@@ -10,6 +10,7 @@
 import { spawnSync } from "child_process";
 import fs from "fs"; import path from "path"; import os from "os"; import crypto from "crypto";
 import { fileURLToPath, pathToFileURL } from "url";
+import { VAULTS, MODES, PARTS } from "./regression.parts.mjs";
 
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
@@ -116,64 +117,94 @@ function same(label, args, input, opts = {}) {
     return b;
 }
 
-const vaults = [buildVault("none", NORMAL, []), buildVault("mixed", NORMAL, SENSITIVE), buildVault("sensitive", [], SENSITIVE)];
-for (const v of vaults) {
+// ENOTES_TEST_PART: run just one part - one mode of one vault ("<vault>:<mode>"), or "rest" (usage /
+// help); the list is in ./regression.parts.mjs. tests/run-all.mjs runs the parts at once. Unset: all.
+const PART = process.env.ENOTES_TEST_PART || "";
+if (PART && !PARTS.includes(PART)) { console.error(`ENOTES_TEST_PART must be one of ${PARTS.join(", ")} (or unset), not '${PART}'`); process.exit(2); }
+const vaultDefs = { none: [NORMAL, []], mixed: [NORMAL, SENSITIVE], sensitive: [[], SENSITIVE] };
+if (Object.keys(vaultDefs).join() !== VAULTS.join()) { console.error(`tests/cli/regression.parts.mjs must list exactly the vaults: ${Object.keys(vaultDefs).join(", ")}`); process.exit(2); }
+const usedModes = new Set();
+for (const [vaultLabel, [normal, sensitive]] of Object.entries(vaultDefs)) {
+    if (PART && !PART.startsWith(vaultLabel + ":")) continue;
+    // One mode's checks: they run unless just another part was asked for.
+    const inMode = (mode) => {
+        if (!MODES.includes(mode)) throw new Error(`mode '${mode}' is not in tests/cli/regression.parts.mjs`);
+        usedModes.add(mode);
+        return !PART || PART === `${vaultLabel}:${mode}`;
+    };
+    const v = buildVault(vaultLabel, normal, sensitive);
     console.log(`\n=== vault '${v.label}' (${v.names.length} notes) ===`);
     const M = `${MASTER}\n`, D = { drive: v.drive };
-    console.log("  -m on");
-    same("on -t", ["-m", "on", "-t", "GOODTOKEN"], M, D);
-    same("on, token at the prompt", ["-m", "on"], `  GOODTOKEN  \n${MASTER}\n`, D);
-    same("on, '-t' without a value", ["-m", "on", "-t"], `GOODTOKEN\n${MASTER}\n`, D);
-    same("on with -c / -n / -d / -s too", ["-m", "on", "-t", "GOODTOKEN", "-c", v.config, "-n", v.config, "-d", v.notes, "-s", v.notes], M, D);
-    same("on, bad token", ["-m", "on", "-t", "BADTOKEN"], M, D);
-    same("on, empty token", ["-m", "on"], "\n", D);
-    same("on, wrong master password", ["-m", "on", "-t", "GOODTOKEN"], "WrongPass9\n", D);
-    same("on, duplicate data", ["-m", "on", "-t", "GOODTOKEN"], M, { drive: v.dups });
-    same("on, momentary Drive miss", ["-m", "on", "-t", "GOODTOKEN"], M, { ...D, env: { FAKE_HIDE_ONCE: "eNotes Manager,Config,Entries,config.json" } });
-    same("on, config.json missing", ["-m", "on", "-t", "GOODTOKEN"], M, { drive: v.noconfig });
-    same("on, Node 18", ["-m", "on", "-t", "GOODTOKEN"], M, { ...D, preload: [N18] });
-    console.log("  -m on -x");
-    same("on -x -t", ["-m", "on", "-t", "GOODTOKEN", "-x"], "", D);
-    same("on -x, token at the prompt", ["-m", "on", "-x"], "GOODTOKEN\n", D);
-    same("on -x, bad token", ["-m", "on", "-t", "BADTOKEN", "-x"], "", D);
-    same("on -x, duplicate data", ["-m", "on", "-t", "GOODTOKEN", "-x"], "", { drive: v.dups });
-    console.log("  -m off");
     const bad = path.join(HERE, "nope");
-    same("off -c -d", ["-m", "off", "-c", v.config, "-d", v.notes], M);
-    for (const n of v.names) same(`off -c -n '${n}'`, ["-m", "off", "-c", v.config, "-n", path.join(v.notes, n)], M);
-    same("off -c -n -d", ["-m", "off", "-c", v.config, "-n", path.join(v.notes, v.names[0]), "-d", v.notes], M);
-    for (const [label, input] of [["d", `d\n${v.notes}\n${MASTER}\n`], ["default", `\n${v.notes}\n${MASTER}\n`], ["f", `f\n${path.join(v.notes, v.names[0])}\n${MASTER}\n`], ["file", `file\n${path.join(v.notes, v.names[0])}\n${MASTER}\n`]]) {
-        same(`off -c only, wizard '${label}'`, ["-m", "off", "-c", v.config], input);
+    if (inMode("on")) {
+        console.log("  -m on");
+        same("on -t", ["-m", "on", "-t", "GOODTOKEN"], M, D);
+        same("on, token at the prompt", ["-m", "on"], `  GOODTOKEN  \n${MASTER}\n`, D);
+        same("on, '-t' without a value", ["-m", "on", "-t"], `GOODTOKEN\n${MASTER}\n`, D);
+        same("on with -c / -n / -d / -s too", ["-m", "on", "-t", "GOODTOKEN", "-c", v.config, "-n", v.config, "-d", v.notes, "-s", v.notes], M, D);
+        same("on, bad token", ["-m", "on", "-t", "BADTOKEN"], M, D);
+        same("on, empty token", ["-m", "on"], "\n", D);
+        same("on, wrong master password", ["-m", "on", "-t", "GOODTOKEN"], "WrongPass9\n", D);
+        same("on, duplicate data", ["-m", "on", "-t", "GOODTOKEN"], M, { drive: v.dups });
+        same("on, momentary Drive miss", ["-m", "on", "-t", "GOODTOKEN"], M, { ...D, env: { FAKE_HIDE_ONCE: "eNotes Manager,Config,Entries,config.json" } });
+        same("on, config.json missing", ["-m", "on", "-t", "GOODTOKEN"], M, { drive: v.noconfig });
+        same("on, Node 18", ["-m", "on", "-t", "GOODTOKEN"], M, { ...D, preload: [N18] });
     }
-    same("off -d only", ["-m", "off", "-d", v.notes], `${v.config}\n${MASTER}\n`);
-    same("off -n only", ["-m", "off", "-n", path.join(v.notes, v.names[0])], `${v.config}\n${MASTER}\n`);
-    same("off, full wizard", ["-m", "off"], `${v.config}\nd\n${v.notes}\n${MASTER}\n`);
-    same("off, bad paths re-asked", ["-m", "off", "-c", bad, "-d", bad], `${v.config}\n${v.notes}\n${MASTER}\n`);
-    same("off, -d given a file / -n given a folder", ["-m", "off", "-c", v.config, "-d", v.config], `${v.notes}\n${MASTER}\n`);
-    same("off, empty path", ["-m", "off"], "\n");
-    same("off, wrong master password", ["-m", "off", "-c", v.config, "-d", v.notes], "WrongPass9\n");
-    same("off with -t / -x / -s too", ["-m", "off", "-c", v.config, "-d", v.notes, "-t", "GOODTOKEN", "-x", "-s", v.notes], M);
-    same("off, folder with non-note files", ["-m", "off", "-c", v.config, "-d", "{cwd}/messy"], M, { setup: (cwd) => { fs.cpSync(v.notes, path.join(cwd, "messy"), { recursive: true }); fs.writeFileSync(path.join(cwd, "messy", "README.txt"), "x"); } });
-    same("off, Node 18", ["-m", "off", "-c", v.config, "-d", v.notes], M, { preload: [N18] });
-    console.log("  -m sensitive");
-    // The .sensitive files to decrypt: from an export (made fresh in each run's folder).
-    const withExport = (cwd) => {
-        spawnSync(process.execPath, [NEWCLI, "-m", "off", "-c", v.config, "-d", v.notes], { cwd, input: M, encoding: "utf8" });
-        fs.renameSync(path.join(cwd, fs.readdirSync(cwd).find((d) => d.startsWith("eNotes Manager Export_"))), path.join(cwd, "exp"));
-    };
-    const sensFiles = Object.keys(v.pws).map((n) => n.replace(/[\/\\:*?"<>|]/g, "_") + ".sensitive").sort();
-    const pwOf = (f) => v.pws[Object.keys(v.pws).find((n) => n.replace(/[\/\\:*?"<>|]/g, "_") + ".sensitive" === f)];
-    const allPw = sensFiles.map(pwOf).join("\n") + "\n";
-    same("sensitive -s <folder>", ["-m", "sensitive", "-s", "{cwd}/exp"], allPw, { setup: withExport });
-    same("sensitive, folder asked", ["-m", "sensitive"], `{cwd}/exp\n${allPw}`, { setup: withExport });
-    same("sensitive, bad path re-asked", ["-m", "sensitive", "-s", bad], `{cwd}/exp\n${allPw}`, { setup: withExport });
-    for (const f of sensFiles) same(`sensitive -s ${f}, wrong then right`, ["-m", "sensitive", "-s", `{cwd}/exp/${f}`], `WrongPass9\n${pwOf(f)}\n`, { setup: withExport });
-    same("sensitive, all skipped", ["-m", "sensitive", "-s", "{cwd}/exp"], sensFiles.map(() => "").join("\n") + "\n", { setup: withExport });
-    same("sensitive with -p / -t / -x too", ["-m", "sensitive", "-s", "{cwd}/exp", "-p", "x", "-t", "GOODTOKEN", "-x"], allPw, { setup: withExport });
-    same("sensitive, a normal export file", ["-m", "sensitive", "-s", `{cwd}/exp/${v.names[0] === "plain" ? "plain.html" : "nothing"}`], "", { setup: withExport });
-    same("sensitive, a still-encrypted note file", ["-m", "sensitive", "-s", path.join(v.notes, v.names[0])], "");
-    same("sensitive, Node 18", ["-m", "sensitive", "-s", "{cwd}/exp"], allPw, { setup: withExport, preload: [N18] });
+    if (inMode("on-x")) {
+        console.log("  -m on -x");
+        same("on -x -t", ["-m", "on", "-t", "GOODTOKEN", "-x"], "", D);
+        same("on -x, token at the prompt", ["-m", "on", "-x"], "GOODTOKEN\n", D);
+        same("on -x, bad token", ["-m", "on", "-t", "BADTOKEN", "-x"], "", D);
+        same("on -x, duplicate data", ["-m", "on", "-t", "GOODTOKEN", "-x"], "", { drive: v.dups });
+    }
+    if (inMode("off")) {
+        console.log("  -m off");
+        same("off -c -d", ["-m", "off", "-c", v.config, "-d", v.notes], M);
+        for (const n of v.names) same(`off -c -n '${n}'`, ["-m", "off", "-c", v.config, "-n", path.join(v.notes, n)], M);
+        same("off -c -n -d", ["-m", "off", "-c", v.config, "-n", path.join(v.notes, v.names[0]), "-d", v.notes], M);
+        for (const [label, input] of [["d", `d\n${v.notes}\n${MASTER}\n`], ["default", `\n${v.notes}\n${MASTER}\n`], ["f", `f\n${path.join(v.notes, v.names[0])}\n${MASTER}\n`], ["file", `file\n${path.join(v.notes, v.names[0])}\n${MASTER}\n`]]) {
+            same(`off -c only, wizard '${label}'`, ["-m", "off", "-c", v.config], input);
+        }
+        same("off -d only", ["-m", "off", "-d", v.notes], `${v.config}\n${MASTER}\n`);
+        same("off -n only", ["-m", "off", "-n", path.join(v.notes, v.names[0])], `${v.config}\n${MASTER}\n`);
+        same("off, full wizard", ["-m", "off"], `${v.config}\nd\n${v.notes}\n${MASTER}\n`);
+        same("off, bad paths re-asked", ["-m", "off", "-c", bad, "-d", bad], `${v.config}\n${v.notes}\n${MASTER}\n`);
+        same("off, -d given a file / -n given a folder", ["-m", "off", "-c", v.config, "-d", v.config], `${v.notes}\n${MASTER}\n`);
+        same("off, empty path", ["-m", "off"], "\n");
+        same("off, wrong master password", ["-m", "off", "-c", v.config, "-d", v.notes], "WrongPass9\n");
+        same("off with -t / -x / -s too", ["-m", "off", "-c", v.config, "-d", v.notes, "-t", "GOODTOKEN", "-x", "-s", v.notes], M);
+        same("off, folder with non-note files", ["-m", "off", "-c", v.config, "-d", "{cwd}/messy"], M, { setup: (cwd) => { fs.cpSync(v.notes, path.join(cwd, "messy"), { recursive: true }); fs.writeFileSync(path.join(cwd, "messy", "README.txt"), "x"); } });
+        same("off, Node 18", ["-m", "off", "-c", v.config, "-d", v.notes], M, { preload: [N18] });
+    }
+    if (inMode("sensitive")) {
+        console.log("  -m sensitive");
+        // The .sensitive files to decrypt: from an export (made fresh in each run's folder).
+        const withExport = (cwd) => {
+            spawnSync(process.execPath, [NEWCLI, "-m", "off", "-c", v.config, "-d", v.notes], { cwd, input: M, encoding: "utf8" });
+            fs.renameSync(path.join(cwd, fs.readdirSync(cwd).find((d) => d.startsWith("eNotes Manager Export_"))), path.join(cwd, "exp"));
+        };
+        const sensFiles = Object.keys(v.pws).map((n) => n.replace(/[\/\\:*?"<>|]/g, "_") + ".sensitive").sort();
+        const pwOf = (f) => v.pws[Object.keys(v.pws).find((n) => n.replace(/[\/\\:*?"<>|]/g, "_") + ".sensitive" === f)];
+        const allPw = sensFiles.map(pwOf).join("\n") + "\n";
+        same("sensitive -s <folder>", ["-m", "sensitive", "-s", "{cwd}/exp"], allPw, { setup: withExport });
+        same("sensitive, folder asked", ["-m", "sensitive"], `{cwd}/exp\n${allPw}`, { setup: withExport });
+        same("sensitive, bad path re-asked", ["-m", "sensitive", "-s", bad], `{cwd}/exp\n${allPw}`, { setup: withExport });
+        for (const f of sensFiles) same(`sensitive -s ${f}, wrong then right`, ["-m", "sensitive", "-s", `{cwd}/exp/${f}`], `WrongPass9\n${pwOf(f)}\n`, { setup: withExport });
+        same("sensitive, all skipped", ["-m", "sensitive", "-s", "{cwd}/exp"], sensFiles.map(() => "").join("\n") + "\n", { setup: withExport });
+        same("sensitive with -p / -t / -x too", ["-m", "sensitive", "-s", "{cwd}/exp", "-p", "x", "-t", "GOODTOKEN", "-x"], allPw, { setup: withExport });
+        same("sensitive, a normal export file", ["-m", "sensitive", "-s", `{cwd}/exp/${v.names[0] === "plain" ? "plain.html" : "nothing"}`], "", { setup: withExport });
+        same("sensitive, a still-encrypted note file", ["-m", "sensitive", "-s", path.join(v.notes, v.names[0])], "");
+        same("sensitive, Node 18", ["-m", "sensitive", "-s", "{cwd}/exp"], allPw, { setup: withExport, preload: [N18] });
+    }
 }
+
+if (!PART && [...usedModes].join() !== MODES.join()) { console.error(`tests/cli/regression.parts.mjs must list exactly the modes: ${[...usedModes].join(", ")}`); process.exit(2); }
+if (PART && PART !== "rest") { // just one mode of one vault: done
+    fs.rmSync(HERE, { recursive: true, force: true });
+    console.log(`\n${checks} checks` + (fails ? `, ${fails} FAILURE(S)` : ", ALL PASSED"));
+    process.exit(fails ? 1 : 0);
+}
+
 
 console.log("\n=== usage / help: only the text about the new modes is new ===");
 for (const args of [[], ["-m", "bogus"], ["-m"], ["-t", "GOODTOKEN"]]) {
