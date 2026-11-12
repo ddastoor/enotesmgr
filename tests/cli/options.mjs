@@ -28,6 +28,7 @@
 import { spawnSync } from "child_process";
 import fs from "fs"; import path from "path"; import os from "os";
 import { fileURLToPath, pathToFileURL } from "url";
+import { OPTIONS_PARTS as PARTS } from "./options-parts.mjs";
 
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
@@ -35,6 +36,11 @@ const NEWCLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
 const FF = path.join(CLI_DIR, "fakefetch.cjs");
 const N18 = path.join(CLI_DIR, "node18sim.cjs");
 const BASELINE_COMMIT = "419c522"; // the original CLI (same as tests/cli/run.mjs)
+// ENOTES_TEST_PART: run just one part - one vault (none / mixed / sensitive / clash), or "rest"
+// (usage errors, --help, the real terminal); the list is in ./options-parts.mjs. tests/run-all.mjs
+// runs the five parts at once, each in its own process. Unset: everything, one after another, as always.
+const PART = process.env.ENOTES_TEST_PART || "";
+if (PART && !PARTS.includes(PART)) { console.error(`ENOTES_TEST_PART must be one of ${PARTS.join(", ")} (or unset), not '${PART}'`); process.exit(2); }
 const HERE = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-cli-options-"));
 let fails = 0, checks = 0;
 const ok = (c, m) => { checks++; if (!c) { fails++; console.log("  FAIL " + m); } else if (process.env.VERBOSE) console.log("  PASS " + m); };
@@ -211,14 +217,20 @@ function checkVsOriginal(label, rNew, rOld, vault) {
         `${label}: normal notes byte-for-byte what the ORIGINAL CLI writes (${normals.length} files)`);
 }
 
-const vaults = {
-    none: buildVault("none", normalNotes),
-    mixed: buildVault("mixed", [...normalNotes, ...sensitiveNotes]),
-    sensitive: buildVault("sensitive", sensitiveNotes),
-    clash: buildVault("clash", clashNotes),
+const vaultNotes = {
+    none: normalNotes,
+    mixed: [...normalNotes, ...sensitiveNotes],
+    sensitive: sensitiveNotes,
+    clash: clashNotes,
 };
+if ([...Object.keys(vaultNotes), "rest"].join() !== PARTS.join()) {
+    console.error(`tests/cli/options-parts.mjs must list exactly the vaults + "rest": ${[...Object.keys(vaultNotes), "rest"].join(", ")}`);
+    process.exit(2);
+}
 
-for (const v of Object.values(vaults)) {
+for (const [vaultLabel, vaultContent] of Object.entries(vaultNotes)) {
+    if (PART && PART !== vaultLabel) continue;
+    const v = buildVault(vaultLabel, vaultContent);
     const V = v.label;
     const all = v.notes;
     const sens = all.filter((n) => n.pw).length;
@@ -427,6 +439,12 @@ for (const v of Object.values(vaults)) {
             checkDecrypt(`[${V}] -m sensitive, the same note as .sensitive and old .html (name clash)`, run(NEWCLI, ["-m", "sensitive", "-s", both], bothFiles.map((f) => noteOf(f).pw).join("\n") + "\n"), bothFiles);
         }
     }
+}
+
+if (PART && PART !== "rest") { // just one vault: done
+    fs.rmSync(HERE, { recursive: true, force: true });
+    console.log(`\n${checks} checks` + (fails ? `, ${fails} FAILURE(S)` : ", ALL PASSED"));
+    process.exit(fails ? 1 : 0);
 }
 
 section("\n=== usage errors ===");

@@ -18,10 +18,27 @@ Then, from the repository root:
 node tests/run-all.mjs
 ```
 
+(On Linux, `npx playwright install --with-deps chromium` also installs the
+system libraries Chromium needs; it asks for your sudo password.)
+
 Run just some suites with `--only` (repeatable), e.g.
-`node tests/run-all.mjs --only crypto --only cli`. A full run takes a few
-minutes, mostly because recovery codes are checked with the slow Argon2
-key derivation on purpose.
+`node tests/run-all.mjs --only crypto --only cli`. An unknown suite name is
+refused (with the list of suites), so a typo never quietly runs nothing.
+
+Several suites run at once - by default half the CPU threads (6 on a
+12-thread machine), at most one per 1.5 GB of memory, at most 8. Each suite
+is its own process with its own temp folder and fake Drive, each browser
+suite gets its own `serve.py`, the slowest suites start first, and each
+suite's output is printed in one piece when it ends, with its time; the
+summary lists every suite's time. Choose the number with `--jobs N` (or
+`-j N`). `--jobs 1` runs them one at a time in the listed order with the
+output shown live, as before - handy when watching a single suite.
+
+The slowest suite, `cli-options`, runs as five parts at once (its four vaults
+and the rest; the list is in `cli/options-parts.mjs`, and `ENOTES_TEST_PART`
+picks a part when running it by hand); with `--jobs 1` it runs whole. Most of
+the time goes into checking recovery codes and every export with the slow
+Argon2 key derivation, on purpose.
 
 ## What is covered
 
@@ -29,6 +46,7 @@ key derivation on purpose.
 |---|---|---|
 | `verify` | `src/export/verify.mjs` | the export CLI bundle was rebuilt after its sources changed |
 | `crypto` | `crypto.test.mjs` | encrypt/decrypt, data from the original app still decrypts, missing passwords refused, secrets wiped from WASM memory, no insecure random fallback, `crypto.wasm` stripped |
+| `runner` | `runner.test.mjs` | the test runner itself (`run-all.mjs`, `lib/pool.mjs`, `lib/serve.mjs`): never more than `--jobs` suites at once, every suite once, results in order, a failure stops new starts; `--jobs` / `-j` / `--jobs=` and bad values refused; the default (half the CPU threads, memory-capped, 1-8); each browser suite's own `serve.py` - several at once on different ports, and when handed a port another server holds it notices the answer isn't its own and moves on; a suite split into parts (`cli-options`: one shared list of parts, an unknown part refused); unknown `--only` names refused; end to end: `--jobs 1` live output as before, several suites at once (browser + node) each printed in one unbroken block, summary with times |
 | `cli` | `cli/run.mjs` | every export CLI mode produces byte-for-byte the same files as the original CLI (from git history, commit `419c522`), plus private file modes, hidden token prompt, safe mirror paths, Node 18 |
 | `sensitive` | `sensitive.test.mjs` | sensitive notes without a browser: the envelope format, both encryption layers (note password inside, file password outside), the shared export rules (`<name>.sensitive`), the CLI's offline export of a sensitive note |
 | `cli-options` | `cli/options.mjs` | the export CLI with EVERY option combination (offline `-c -d`, `-c -n` for every note, `-c -n -d`, every partial wizard and answer, bad / wrong-type / empty paths, wrong master password, ignored extra flags; online `-t`, token prompt, `-t` without a value, empty / bad token, wrong master password, duplicate trees + an older config.json with another key, a momentary Drive miss, config.json missing; `-x` mirror with `-t` / prompt / bad token, offline export from the mirror; Node 18; usage errors; `--help`; and `-m sensitive`: export folder, single files, asked-for / bad path, wrong / master / file password then right, Enter skips, not-a-sensitive-file, `-x` copy files, an original-CLI export, name clashes, no password option, ignored flags, Node 18, password hidden in a real terminal) on four vaults: no sensitive notes, mixed, only sensitive, and output-name clashes. Every export checked file by file; normal notes byte-for-byte the original CLI's output; sensitive notes stay locked (no plaintext anywhere), open only with their note password, to exactly the app's Download (~10 minutes) |
