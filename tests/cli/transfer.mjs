@@ -23,6 +23,7 @@ const ROOT = path.resolve(CLI_DIR, "..", "..");
 const CLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
 const FF = path.join(CLI_DIR, "fakefetch.cjs");
 const N18 = path.join(CLI_DIR, "node18sim.cjs");
+const FN = path.join(CLI_DIR, "fakenow.cjs"); // FAKE_NOW (fixed clock), FAKE_LATE_FOLDER
 const HERE = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-cli-transfer-"));
 let fails = 0, checks = 0;
 const ok = (c, m) => { checks++; if (!c) { fails++; console.log("  FAIL " + m); } else console.log("  PASS " + m); };
@@ -103,9 +104,14 @@ const LEAKS = ["PIN-1111", "SECRET-", "café", "first dup", "B's own", PNG.slice
 
 console.log("1. '-m export' (account A)");
 const OUT = fs.mkdtempSync(path.join(HERE, "out-"));
-let r = run(["-m", "export"], `${OUT}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveA, env: { FAKE_EMAIL: "old@example.com" } });
+const NOW = "2026-03-04T05:06:30", T_NAME = "eNotes Manager Transfer_20260304_0506";
+let r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveA, cwd: OUT, preload: [FN], env: { FAKE_EMAIL: "old@example.com", FAKE_NOW: NOW } });
 const [T] = transferIn(OUT);
 ok(r.code === 0 && T && r.out.includes(`Exported ${A_NOTES.length} of ${A_NOTES.length} note(s) (4 sensitive)`), `exit 0, ${A_NOTES.length} notes exported` + (r.code === 0 ? "" : `: ${r.out.slice(-400)}`));
+ok(fs.readdirSync(OUT).join("|") === T_NAME && T === path.join(OUT, T_NAME),
+    `no folder is asked for: it makes '${T_NAME}' (date and time, like the other modes' folders) in the folder it is run in - and writes nothing else there`);
+ok(r.out.split("(hidden): ").length - 1 === 2 && !r.out.includes("Folder to save") && r.out.includes(`Transfer folder: ${T}\n`) && r.out.includes(`into '${T}'.`) && r.out.includes("(it asks for this transfer folder)"),
+    "asks only for the export token and the master password; shows the transfer folder's full path (the import asks for it)");
 ok(r.out.includes("old@example.com") && r.out.includes("-m import"), "names the account, and says how to import");
 ok(JSON.stringify(r.after) === JSON.stringify(A.tree), "account A's Drive is unchanged (export only reads)");
 const tFiles = fs.readdirSync(T).sort();
@@ -121,55 +127,68 @@ const parsed = recs.map((x) => JSON.parse(x));
 ok(A_NOTES.every(([name, content, ap], i) => { const p = parsed[i]; return p.format === "eNotesMgr transfer" && p.version === 1 && p.name === name && p.content === content && JSON.stringify(p.appProperties) === JSON.stringify(ap); }),
     "each file holds its note EXACTLY: name (odd / unicode), stored content (sensitive: still locked), metadata incl. dates (null for the old-format note)");
 ok(!r.out.includes(MASTER_A) && !r.out.includes("GOODTOKEN") && LEAKS.slice(0, 5).every((m) => !r.out.includes(m)), "nothing secret printed");
-run(["-m", "export"], `${OUT}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveA }); // a second export into the same folder
+// Every file and folder under `dir` (path, content, mode) - to prove nothing changed.
+const snapshot = (dir) => JSON.stringify(fs.readdirSync(dir, { recursive: true }).sort().map((f) => {
+    const p = path.join(dir, f), st = fs.statSync(p);
+    return [f, st.isDirectory() ? "<dir>" : fs.readFileSync(p, "base64"), st.mode];
+}));
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveA, cwd: OUT, preload: [FN], env: { FAKE_NOW: "2026-03-04T05:07:10" } }); // again, a minute later
 const both = transferIn(OUT);
-ok(both.length === 2 && new Set(both).size === 2 && both.every((d) => fs.readdirSync(d).length === A_NOTES.length) && fs.readdirSync(T).every((f, i) => fs.readFileSync(path.join(T, f), "utf8") === raw[i]),
-    "exporting again makes a second folder (' (1)' in the same minute) - the first one is never touched: " + both.map((d) => path.basename(d)).join(", "));
+ok(r.code === 0 && both.map((d) => path.basename(d)).sort().join("|") === `${T_NAME}|eNotes Manager Transfer_20260304_0507` && both.every((d) => fs.readdirSync(d).length === A_NOTES.length) &&
+    fs.readdirSync(T).every((f, i) => fs.readFileSync(path.join(T, f), "utf8") === raw[i]),
+    "exporting again later makes a second dated folder ('..._0507') - the first one is never touched");
+const sameMinute = snapshot(OUT);
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveA, cwd: OUT, preload: [FN], env: { FAKE_NOW: "2026-03-04T05:07:50" } }); // the same minute as the second one
+ok(r.code === 1 && r.out.includes("A folder 'eNotes Manager Transfer_20260304_0507' already exists here") && r.out.includes("Nothing was written - wait a minute") &&
+    !r.out.includes("Paste the export token") && snapshot(OUT) === sameMinute && transferIn(OUT).length === 2,
+    "again in the SAME minute: stops at once with a clear message, before asking anything - nothing written, no ' (1)' folder, the existing folders untouched");
+const late = fs.mkdtempSync(path.join(HERE, "out-"));
+fs.mkdirSync(path.join(late, T_NAME)); fs.writeFileSync(path.join(late, T_NAME, "mine.txt"), "keep me");
+const lateBefore = snapshot(late);
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveA, cwd: late, preload: [FN], env: { FAKE_NOW: NOW, FAKE_LATE_FOLDER: "1" } });
+ok(r.code === 1 && r.out.includes(`A folder '${T_NAME}' already exists here`) && r.out.includes("Paste the export token") && snapshot(late) === lateBefore,
+    "and if such a folder only appears while it runs (after its first look): it still never writes into it - stops, nothing written");
 
 console.log("\n2. '-m export': prompts, options and errors");
-const noFolder = (o) => transferIn(o).length === 0;
-let o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export", "-t", "BADTOKEN", "-x", "-c", "x", "-d", "y", "-n", "z", "-s", "q", "-i"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveA });
-ok(r.code === 0 && transferIn(o).length === 1 && fs.readdirSync(transferIn(o)[0]).length === A_NOTES.length, "every other option is ignored (even -t BADTOKEN): everything is asked");
-o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export"], `${path.join(HERE, "nope")}\n${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveA });
-ok(r.code === 0 && r.out.includes("Folder not found") && transferIn(o).length === 1, "a folder that doesn't exist is asked for again");
-r = run(["-m", "export"], "\n", { drive: driveA });
-ok(r.code === 1 && r.out.includes("No path entered"), "no folder given: stops");
+const noFolder = (x) => fs.readdirSync(x.cwd).length === 0; // nothing at all written where it was run
+const p2 = (n) => String(n).padStart(2, "0");
+const stampOf = (d) => `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}`;
+const t0 = new Date();
+r = run(["-m", "export", "-t", "BADTOKEN", "-x", "-c", "x", "-d", "y", "-n", "z", "-s", "q", "-i"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveA });
+const t1 = new Date();
+ok(r.code === 0 && transferIn(r.cwd).length === 1 && fs.readdirSync(transferIn(r.cwd)[0]).length === A_NOTES.length, "every other option is ignored (even -t BADTOKEN): everything is asked");
+ok(fs.readdirSync(r.cwd).length === 1 && [stampOf(t0), stampOf(t1)].some((s) => path.basename(transferIn(r.cwd)[0]) === `eNotes Manager Transfer_${s}`),
+    `with the real clock: the one folder made is 'eNotes Manager Transfer_<now as YYYYMMDD_HHMM>' (${path.basename(transferIn(r.cwd)[0] || "")})`);
 for (const [label, input, want] of [["wrong master password", "WrongPass9", "Could not decrypt config.json"], ["B's master password", MASTER_B, "Could not decrypt config.json"]]) {
-    o = fs.mkdtempSync(path.join(HERE, "out-"));
-    r = run(["-m", "export"], `${o}\nGOODTOKEN\n${input}\n`, { drive: driveA });
-    ok(r.code === 1 && r.out.includes(want) && noFolder(o), `${label}: clear error, no transfer folder made`);
+    r = run(["-m", "export"], `GOODTOKEN\n${input}\n`, { drive: driveA });
+    ok(r.code === 1 && r.out.includes(want) && noFolder(r), `${label}: clear error, no transfer folder made`);
 }
-o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export"], `${o}\nBADTOKEN\n${MASTER_A}\n`, { drive: driveA });
-ok(r.code === 1 && r.out.includes("rejected the export token") && noFolder(o), "bad token: clear error, nothing made");
-r = run(["-m", "export"], `${o}\n\n`, { drive: driveA });
-ok(r.code === 1 && r.out.includes("needs an export token") && noFolder(o), "empty token: clear error");
+r = run(["-m", "export"], `BADTOKEN\n${MASTER_A}\n`, { drive: driveA });
+ok(r.code === 1 && r.out.includes("rejected the export token") && noFolder(r), "bad token: clear error, nothing made");
+r = run(["-m", "export"], "\n", { drive: driveA });
+ok(r.code === 1 && r.out.includes("needs an export token") && noFolder(r), "empty token: clear error, nothing made");
+r = run(["-m", "export"], "", { drive: driveA });
+ok(r.code === 1 && noFolder(r), "no input at all (e.g. Ctrl+D): stops, nothing made");
 const driveNone = writeJson(path.join(HERE, "none.json"), [{ id: "x", name: "Other", parents: ["appDataFolder"], mimeType: "application/vnd.google-apps.folder", content: "" }]);
-r = run(["-m", "export"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveNone });
-ok(r.code === 1 && r.out.includes("has no eNotesMgr data yet") && noFolder(o), "an account that never used the app: clear error");
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveNone });
+ok(r.code === 1 && r.out.includes("has no eNotesMgr data yet") && noFolder(r), "an account that never used the app: clear error");
 const driveNoCfg = writeJson(path.join(HERE, "nocfg.json"), vault("n", MASTER_A, FP_A, A_NOTES.slice(0, 2), { noConfig: true }).tree);
-r = run(["-m", "export"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveNoCfg });
-ok(r.code === 1 && r.out.includes("incomplete") && noFolder(o), "config.json missing: clear error");
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveNoCfg });
+ok(r.code === 1 && r.out.includes("incomplete") && noFolder(r), "config.json missing: clear error");
 const dupTree = JSON.parse(JSON.stringify(A.tree));
 dupTree.unshift({ id: "dupcfg", name: "config.json", parents: ["a2"], mimeType: "text/plain", content: C.encryptData(JSON.stringify({ file_password: "another-key" }), MASTER_A), appProperties: { DateTimeCreated: "2020-01-01T00:00" } });
 dupTree.unshift({ id: "dupE", name: "Entries", parents: ["dupM"], mimeType: "application/vnd.google-apps.folder", content: "" });
 dupTree.unshift({ id: "dupM", name: "eNotes Manager", parents: ["appDataFolder"], mimeType: "application/vnd.google-apps.folder", content: "" });
-o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: writeJson(path.join(HERE, "A-dups.json"), dupTree), env: { FAKE_HIDE_ONCE: "Config,config.json" } });
-ok(r.code === 0 && transferIn(o).length === 1 && fs.readdirSync(transferIn(o)[0]).length === A_NOTES.length,
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: writeJson(path.join(HERE, "A-dups.json"), dupTree), env: { FAKE_HIDE_ONCE: "Config,config.json" } });
+ok(r.code === 0 && transferIn(r.cwd).length === 1 && fs.readdirSync(transferIn(r.cwd)[0]).length === A_NOTES.length,
     "duplicate data (empty 2nd tree, older config.json with another key) + a momentary Drive miss: exports the real notes");
-o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: writeJson(path.join(HERE, "A-bad.json"), vault("c", MASTER_A, FP_A, A_NOTES, { corrupt: "rich" }).tree) });
-ok(r.code === 1 && r.out.includes("SKIPPED") && r.out.includes(`Exported ${A_NOTES.length - 1} of ${A_NOTES.length}`) && fs.readdirSync(transferIn(o)[0]).length === A_NOTES.length - 1,
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: writeJson(path.join(HERE, "A-bad.json"), vault("c", MASTER_A, FP_A, A_NOTES, { corrupt: "rich" }).tree) });
+ok(r.code === 1 && r.out.includes("SKIPPED") && r.out.includes(`Exported ${A_NOTES.length - 1} of ${A_NOTES.length}`) && fs.readdirSync(transferIn(r.cwd)[0]).length === A_NOTES.length - 1,
     "a damaged note in Drive: skipped and reported, the others exported, exit 1");
-o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: writeJson(path.join(HERE, "A-empty.json"), vault("e", MASTER_A, FP_A, []).tree) });
-ok(r.code === 0 && r.out.includes("Exported 0 of 0") && fs.readdirSync(transferIn(o)[0]).length === 0, "an account with no notes: an empty transfer folder, exit 0");
-o = fs.mkdtempSync(path.join(HERE, "out-"));
-r = run(["-m", "export"], `${o}\nGOODTOKEN\n${MASTER_A}\n`, { drive: driveA, preload: [N18] });
-ok(r.code === 0 && fs.readdirSync(transferIn(o)[0]).length === A_NOTES.length, "works on Node 18");
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: writeJson(path.join(HERE, "A-empty.json"), vault("e", MASTER_A, FP_A, []).tree) });
+ok(r.code === 0 && r.out.includes("Exported 0 of 0") && fs.readdirSync(transferIn(r.cwd)[0]).length === 0, "an account with no notes: an empty transfer folder, exit 0");
+r = run(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, { drive: driveA, preload: [N18] });
+ok(r.code === 0 && fs.readdirSync(transferIn(r.cwd)[0]).length === A_NOTES.length, "works on Node 18");
 
 console.log("\n3. '-m import' into account B");
 const bEntries = (tree) => tree.filter((f) => (f.parents || [])[0] === B.entries);
@@ -244,8 +263,7 @@ fs.mkdirSync(path.join(MIX, "sub")); fs.copyFileSync(path.join(T, tFiles[0]), pa
 fs.writeFileSync(path.join(MIX, "README.txt"), "hello"); fs.writeFileSync(path.join(MIX, ".DS_Store"), "x");
 fs.copyFileSync(path.join(fa, "s-text.sensitive"), path.join(MIX, "s-text.sensitive"));
 const otherA = vault("o", "OtherPass1", "fp-o", [["only-in-other", "<div>other</div>", meta("2024-01-01T00:00", "2024-01-01T00:00", "new", "richtext")]]);
-const oo = fs.mkdtempSync(path.join(HERE, "out-"));
-run(["-m", "export"], `${oo}\nGOODTOKEN\nOtherPass1\n`, { drive: writeJson(path.join(HERE, "other.json"), otherA.tree) });
+const oo = run(["-m", "export"], `GOODTOKEN\nOtherPass1\n`, { drive: writeJson(path.join(HERE, "other.json"), otherA.tree) }).cwd;
 fs.copyFileSync(path.join(transferIn(oo)[0], "note-0001.enotes"), path.join(MIX, "zz-other-password.enotes"));
 const tampered = raw[1].slice(0, 60) + (raw[1][60] === "A" ? "B" : "A") + raw[1].slice(61);
 fs.writeFileSync(path.join(MIX, "zz-tampered.enotes"), tampered);

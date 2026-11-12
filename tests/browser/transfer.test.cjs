@@ -137,10 +137,11 @@ function cli(args, input, driveFile) {
     const storedA = Object.fromEntries(NOTES.map((n) => { const f = fileByName(n.name); return [n.name, { appProperties: f.appProperties, mimeType: f.mimeType, content: C.decryptData(f.content, fpA) }]; }));
 
     console.log("2. '-m export' (account A)");
-    const out = fs.mkdtempSync(path.join(WORK, "out-"));
-    const exp = cli(["-m", "export"], `${out}\nGOODTOKEN\n${MASTER_A}\n`, dumpDrive(path.join(WORK, "driveA.json")));
-    const tdir = path.join(out, fs.readdirSync(out).find((d) => d.startsWith("eNotes Manager Transfer_")));
-    ok(exp.code === 0 && fs.readdirSync(tdir).length === NOTES.length, `exported ${NOTES.length} notes into ${path.basename(tdir)}`);
+    const exp = cli(["-m", "export"], `GOODTOKEN\n${MASTER_A}\n`, dumpDrive(path.join(WORK, "driveA.json")));
+    const made = fs.readdirSync(exp.cwd); // the dated transfer folder, made where the command was run
+    const tdir = path.join(exp.cwd, made[0] || "");
+    ok(exp.code === 0 && made.length === 1 && /^eNotes Manager Transfer_\d{8}_\d{4}$/.test(made[0]) && fs.readdirSync(tdir).length === NOTES.length,
+        `exported ${NOTES.length} notes into ${made[0]} (made in the folder it was run in)` + (exp.code === 0 ? "" : `: ${exp.out.slice(-400)}`));
 
     console.log("3. A brand-new account B, with its own 'plain-text' note");
     drive.clear();

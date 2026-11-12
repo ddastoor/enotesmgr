@@ -98,11 +98,11 @@ Export CLI utility {
             }
 
             export \(-m export\) {
-                1. Ask for a folder to save into (re-asked until it exists).
-                2. Ask for the export token (hidden) of the account to export; find its data like the other online modes (same duplicate / glitch rules); no data / incomplete data: clear error, exit 1.
-                3. Ask the account's master password (hidden), get its file password (wrong password: error, exit 1, nothing written).
-                4. Create a new folder 'eNotes Manager Transfer_<YYYYMMDD_HHMM>' inside the given folder (" (1)", " (2)"... if it exists - never overwrite), 0700, and write one transfer file (0600) per note. A note that can't be read is reported (SKIPPED) and the others are still exported (exit 1).
-                5. Say how many notes (and sensitive notes) were exported, that the files are locked with this account's master password, and how to import them. Export only reads Google Drive.
+                The transfer folder is made in the current folder (where the command is run - no folder is asked for), named with the date and time like the other modes' folders: 'eNotes Manager Transfer_<YYYYMMDD_HHMM>'. It is always a NEW folder: if a folder of that name is already there (an export made in the same minute), the export stops with a clear message ("... already exists here ... Nothing was written - wait a minute and run the export again."), exit 1 - checked first, before anything is asked, and again when the folder is created. It never writes into, or mixes with, an existing folder, and never adds " (1)".
+                1. Ask for the export token (hidden) of the account to export; find its data like the other online modes (same duplicate / glitch rules); no data / incomplete data: clear error, exit 1.
+                2. Ask the account's master password (hidden), get its file password (wrong password: error, exit 1, nothing written).
+                3. Create the transfer folder (0700) and write one transfer file (0600) per note; show the folder's full path (the import asks for it). A note that can't be read is reported (SKIPPED) and the others are still exported (exit 1).
+                4. Say how many notes (and sensitive notes) were exported, into which folder, that the files are locked with this account's master password, and how to import them. Export only reads Google Drive.
             }
 
             import \(-m import\) {

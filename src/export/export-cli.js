@@ -146,12 +146,12 @@ MODES
                 another account. Every note is saved exactly as the app stores
                 it - its name, content and all its details (type, dates,
                 sensitive or not) - one file per note, in a new folder
-                'eNotes Manager Transfer_<date>' inside the folder you give.
+                'eNotes Manager Transfer_<date>'.
                 Each file is locked with this account's master password, so
                 the folder is as safe as your notes in Google Drive (sensitive
                 notes stay locked with their own note password too). Asks for
-                the folder, the export token (in the app, logged in with this
-                account: menu > 'Copy Export Token') and the master password.
+                the export token (in the app, logged in with this account:
+                menu > 'Copy Export Token') and the master password.
                 Only reads Google Drive.
   -m import     Online: add the notes of such a transfer folder to an account
                 (set the account up in the app first) - each note exactly as it
@@ -219,7 +219,7 @@ EXAMPLES
       node enotesmgr-export-cli.js -m sensitive -s "eNotes Manager Export_20260110_0945"
   Move all your notes to another account:
       node enotesmgr-export-cli.js -m export
-          (asks: a folder, token + master password of the OLD account)
+          (asks: token + master password of the OLD account)
       node enotesmgr-export-cli.js -m import
           (asks: the transfer folder, the OLD master password,
            token + master password of the NEW account)
@@ -684,9 +684,15 @@ async function accountData(token) {
     return { account, entriesFolder, configFiles, existing: await listChildren(entriesFolder.id, token) };
 }
 
+// The transfer folder is made in the folder the command is run in, named with the date and time like the other
+// modes' folders. It is always a NEW folder: if one of that name is already there (an export made in the same
+// minute) the export stops before writing anything - it never writes into, or mixes with, an existing folder.
+const transferDirName = () => `eNotes Manager Transfer_${stamp()}`;
+const transferDirTaken = (dir) => new Error(`A folder '${dir}' already exists here (an export made in this same minute). Nothing was written - wait a minute and run the export again.`);
+
 async function runExportForTransfer() {
     console.log("Export for moving notes (-m export): saves every note of an account, exactly as stored, locked with its master password. (Other options are ignored.)");
-    const parent = await resolvePath(null, "Folder to save the transfer folder in: ", isDir, "Folder not found");
+    if (existsSync(transferDirName())) throw transferDirTaken(transferDirName());
     const token = (await promptHidden("Paste the export token of the account to export (in the app, logged in with that account: menu > 'Copy Export Token') (hidden): ")).trim();
     if (!token) throw new Error("Export needs an export token.");
     const { account, configFiles, existing } = await accountData(token);
@@ -694,10 +700,11 @@ async function runExportForTransfer() {
     const master = await promptHidden(`Master password of ${account} (hidden): `);
     const filePassword = await pickFilePassword(configFiles, existing, token, { master });
 
-    let dir = join(parent, `eNotes Manager Transfer_${stamp()}`);
-    for (let i = 1; existsSync(dir); i++) dir = join(parent, `eNotes Manager Transfer_${stamp()} (${i})`);
-    mkdirSync(dir, { recursive: true, mode: DIR_MODE });
-    console.log("Transfer folder: " + dir);
+    // A NEW folder, never an existing one (mkdirSync without 'recursive' fails if it exists).
+    const dir = transferDirName();
+    try { mkdirSync(dir, { mode: DIR_MODE }); } catch (err) { throw err.code === "EEXIST" ? transferDirTaken(dir) : err; }
+    const where = join(process.cwd(), dir);
+    console.log("Transfer folder: " + where);
     let done = 0, sensitive = 0;
     const failed = [];
     for (const [i, e] of existing.entries()) {
@@ -713,11 +720,12 @@ async function runExportForTransfer() {
             console.warn(`  SKIPPED a note: ${err.message}`);
         }
     }
-    console.log(`\nExported ${done} of ${existing.length} note(s)` + (sensitive ? ` (${sensitive} sensitive)` : "") + ` into '${dir}'.` +
+    console.log(`\nExported ${done} of ${existing.length} note(s)` + (sensitive ? ` (${sensitive} sensitive)` : "") + ` into '${where}'.` +
         (failed.length ? ` Not exported: ${failed.length}.` : "") +
         `\nThe files are locked with the master password of ${account}.` +
         "\nTo add them to another account: set that account up in the app, log in with it, menu > 'Copy Export Token', then:" +
-        "\n  node enotesmgr-export-cli.js -m import");
+        "\n  node enotesmgr-export-cli.js -m import" +
+        "\n(it asks for this transfer folder).");
     if (failed.length) process.exitCode = 1;
 }
 
