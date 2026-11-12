@@ -46,13 +46,16 @@ the owner says so.
 - On a feature branch, before each push: run only the suites the change can
   affect (`node tests/run-all.mjs --only <suite> --only <suite> ...`) - but
   only when 100% sure the rest can't be affected; when in doubt, run the full
-  suite. Decide from what actually changed, not from a feeling:
-  `git diff origin/main --name-only`, and for the app itself
-  `git diff origin/main -- www ':!www/enotesmgr-export-cli.js'`.
+  suite. Decide from what actually changed since the branch was last tested
+  and pushed, not from a feeling: `git diff origin/<branch> --name-only` (for
+  a new branch: `git diff origin/main --name-only`), and whether the app files
+  are untouched: `git diff origin/<branch> -- www ':!www/enotesmgr-export-cli.js'`.
+  (A branch that already holds several features always differs from `main`
+  everywhere, so comparing with `main` would always mean the full suite.)
   - Only docs (`instructions/`, READMEs, this file): `verify`.
   - Only test files: those suites, plus `verify`.
   - Only the export CLI (`src/export/`, `www/enotesmgr-export-cli.js`) with
-    the app files byte-identical to `main`: `verify`, `cli`, `sensitive`,
+    the app files unchanged: `verify`, `cli`, `sensitive`,
     `cli-options`, `cli-transfer`, `cli-regression`, and the browser suites
     that run the CLI: `cli-roundtrip`, `cli-matrix`, `sensitive-notes`,
     `transfer`.
