@@ -22,6 +22,17 @@ const fileByName = (n) => [...drive.values()].find((f) => f.name === n);
 const freePort = () => new Promise((resolve) => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
 
 (async () => {
+    // ENOTES_TEST_PART: run just one part (the list: ./settings.test.parts.mjs; tests/run-all.mjs runs
+    // them at once). Every part uses the account set up below. Unset: all, in order.
+    const { PARTS } = await import(pathToFileURL(path.join(__dirname, "settings.test.parts.mjs")).href);
+    const PART = process.env.ENOTES_TEST_PART || "";
+    if (PART && !PARTS.includes(PART)) { console.error(`ENOTES_TEST_PART must be one of ${PARTS.join(", ")} (or unset), not '${PART}'`); process.exit(2); }
+    const usedParts = [];
+    const inPart = (name) => {
+        if (!PARTS.includes(name)) throw new Error(`part '${name}' is not in settings.test.parts.mjs`);
+        usedParts.push(name);
+        return !PART || PART === name;
+    };
     globalThis.__CRYPTO_WASM_BYTES__ = fs.readFileSync(path.join(ROOT, "www/js/crypto/crypto.wasm")).toString("base64");
     const C = await import(pathToFileURL(path.join(ROOT, "www/js/crypto/crypto.js")).href);
     await C.cryptoReady;
@@ -80,31 +91,34 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
     };
     const waitDownloads = async (n) => { for (let i = 0; i < 400 && settingsDownloads() < n; i++) await sleep(25); return settingsDownloads() >= n; };
 
-    console.log("1. While the settings load from Drive they can't be changed or saved");
-    // Opening Settings: a name lookup in Drive (nothing on screen meanwhile), then the download
-    // (with 'Loading...' on screen, which takes the mouse but not the keyboard).
-    for (const [where, slow] of [["the lookup", { slowLookups: { "settings.json": [3000] } }], ["the download", { slowDownloads: { "settings.json": [3000] } }]]) {
-        store("Light", 300);
-        page = await openApp(NEW_URL);
-        store("Dark", 900); // changed elsewhere since this page logged in
-        Object.assign(global, slow);
-        const n = settingsDownloads();
-        await page.click("#btn-settings"); await page.waitForSelector("#set-save");
-        const atOnce = await fields(page);
-        if (where === "the download") await waitDownloads(n + 1);
-        const during = await page.evaluate(() => ["#set-timeout", "#set-theme", "#set-save", "#set-cancel"].map((s) => document.querySelector(s).disabled));
-        ok(atOnce === "Light/300", `during ${where}: it shows the settings in memory at once (${atOnce})`);
-        ok(during.join() === "true,true,true,false", `during ${where}: the timeout field, the theme and Save are disabled; Cancel is not`);
-        await page.keyboard.press("Tab"); await page.keyboard.type("777"); await page.keyboard.press("ArrowDown");
-        ok(await fields(page) === "Light/300", `during ${where}: typing and arrow keys change nothing`);
-        const t0 = Date.now();
-        await page.waitForFunction(() => !document.querySelector("#set-save").disabled, null, { timeout: 20000 });
-        ok(Date.now() - t0 > 1000 && await fields(page) === "Dark/900", `once Drive's copy is in, it is shown (${await fields(page)})`);
-        const after = await page.evaluate(() => ["#set-timeout", "#set-theme", "#set-save", "#set-cancel"].map((s) => document.querySelector(s).disabled));
-        ok(after.join() === "false,false,false,false", "and every field and both buttons work");
-        await page.keyboard.press("Escape"); await page.waitForSelector("#file-select");
-        await page.context().close();
-        global.slowLookups = {};
+    if (inPart("loading")) {
+        console.log("1. While the settings load from Drive they can't be changed or saved");
+        // Opening Settings: a name lookup in Drive (nothing on screen meanwhile), then the download
+        // (with 'Loading...' on screen, which takes the mouse but not the keyboard).
+        for (const [where, slow] of [["the lookup", { slowLookups: { "settings.json": [3000] } }], ["the download", { slowDownloads: { "settings.json": [3000] } }]]) {
+            store("Light", 300);
+            page = await openApp(NEW_URL);
+            store("Dark", 900); // changed elsewhere since this page logged in
+            Object.assign(global, slow);
+            const n = settingsDownloads();
+            await page.click("#btn-settings"); await page.waitForSelector("#set-save");
+            const atOnce = await fields(page);
+            if (where === "the download") await waitDownloads(n + 1);
+            const during = await page.evaluate(() => ["#set-timeout", "#set-theme", "#set-save", "#set-cancel"].map((s) => document.querySelector(s).disabled));
+            ok(atOnce === "Light/300", `during ${where}: it shows the settings in memory at once (${atOnce})`);
+            ok(during.join() === "true,true,true,false", `during ${where}: the timeout field, the theme and Save are disabled; Cancel is not`);
+            await page.keyboard.press("Tab"); await page.keyboard.type("777"); await page.keyboard.press("ArrowDown");
+            ok(await fields(page) === "Light/300", `during ${where}: typing and arrow keys change nothing`);
+            const t0 = Date.now();
+            await page.waitForFunction(() => !document.querySelector("#set-save").disabled, null, { timeout: 20000 });
+            ok(Date.now() - t0 > 1000 && await fields(page) === "Dark/900", `once Drive's copy is in, it is shown (${await fields(page)})`);
+            const after = await page.evaluate(() => ["#set-timeout", "#set-theme", "#set-save", "#set-cancel"].map((s) => document.querySelector(s).disabled));
+            ok(after.join() === "false,false,false,false", "and every field and both buttons work");
+            await page.keyboard.press("Escape"); await page.waitForSelector("#file-select");
+            await page.context().close();
+            global.slowLookups = {};
+        }
+        ok(errors.length === 0, "no page errors (loading)" + (errors.length ? ": " + errors.join(" | ") : ""));
     }
 
     // The same steps on both apps.
@@ -153,64 +167,73 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
         return r;
     };
 
-    console.log("2. A change made while it loads, saved when loading is over");
-    for (const where of ["lookup", "download"]) {
-        const a = await changeWhileLoading(NEW_URL, where);
-        ok(a.drive === "Dark/600" && a.memory === "Dark/600" && a.theme === "dark",
-            `during the ${where}: the change is kept - Drive Dark/600, in the app Dark/600, dark theme (Drive ${a.drive}, app ${a.memory}, ${a.theme})`);
-        const old = await changeWhileLoading(OLD_URL, where);
-        ok(!(old.drive === "Dark/600" && old.memory === "Dark/600" && old.theme === "dark"),
-            `(before the fix the same steps lost the change: Drive ${old.drive}, app ${old.memory}, ${old.theme} theme)`);
+    if (inPart("change")) {
+        console.log("2. A change made while it loads, saved when loading is over");
+        for (const where of ["lookup", "download"]) {
+            const a = await changeWhileLoading(NEW_URL, where);
+            ok(a.drive === "Dark/600" && a.memory === "Dark/600" && a.theme === "dark",
+                `during the ${where}: the change is kept - Drive Dark/600, in the app Dark/600, dark theme (Drive ${a.drive}, app ${a.memory}, ${a.theme})`);
+            const old = await changeWhileLoading(OLD_URL, where);
+            ok(!(old.drive === "Dark/600" && old.memory === "Dark/600" && old.theme === "dark"),
+                `(before the fix the same steps lost the change: Drive ${old.drive}, app ${old.memory}, ${old.theme} theme)`);
+        }
+        ok(errors.length === 0, "no page errors (change)" + (errors.length ? ": " + errors.join(" | ") : ""));
     }
 
-    console.log("3. Leave while it is loading, come back, change and save; the first load ends after that");
-    const b = await leaveAndComeBack(NEW_URL);
-    ok(b.savedBeforeSlowRead, "(the save was done before the first, slow read ended)");
-    ok(b.drive === "Dark/600" && b.memory === "Dark/600" && b.theme === "dark",
-        `the late first read is ignored: Drive Dark/600 and the app keeps Dark/600, dark theme (Drive ${b.drive}, app ${b.memory}, ${b.theme})`);
-    const bOld = await leaveAndComeBack(OLD_URL);
-    ok(bOld.savedBeforeSlowRead && bOld.drive === "Dark/600" && bOld.memory !== "Dark/600",
-        `(before the fix the late read undid the save in the app: Drive ${bOld.drive}, app ${bOld.memory}, ${bOld.theme} theme)`);
+    if (inPart("leave")) {
+        console.log("3. Leave while it is loading, come back, change and save; the first load ends after that");
+        const b = await leaveAndComeBack(NEW_URL);
+        ok(b.savedBeforeSlowRead, "(the save was done before the first, slow read ended)");
+        ok(b.drive === "Dark/600" && b.memory === "Dark/600" && b.theme === "dark",
+            `the late first read is ignored: Drive Dark/600 and the app keeps Dark/600, dark theme (Drive ${b.drive}, app ${b.memory}, ${b.theme})`);
+        const bOld = await leaveAndComeBack(OLD_URL);
+        ok(bOld.savedBeforeSlowRead && bOld.drive === "Dark/600" && bOld.memory !== "Dark/600",
+            `(before the fix the late read undid the save in the app: Drive ${bOld.drive}, app ${bOld.memory}, ${bOld.theme} theme)`);
+        ok(errors.length === 0, "no page errors (leave)" + (errors.length ? ": " + errors.join(" | ") : ""));
+    }
 
-    console.log("4. If reading Drive fails, the settings can still be changed and saved");
-    store("Light", 300);
-    page = await openApp(NEW_URL);
-    global.slowDownloads = { "settings.json": ["fail"] };
-    await page.click("#btn-settings"); await page.waitForSelector("#set-save");
-    await page.waitForFunction(() => !document.querySelector("#set-save").disabled, null, { timeout: 20000 });
-    ok(await fields(page) === "Light/300", "the fields show the settings in memory and are enabled");
-    await page.selectOption("#set-theme", "Dark"); await page.fill("#set-timeout", "600");
-    await page.click("#set-save"); await onMain(page);
-    ok(stored() === "Dark/600" && await theme(page) === "dark", `Save works: Drive ${stored()}, ${await theme(page)} theme`);
-    await page.context().close();
+    if (inPart("fail-cancel")) {
+        console.log("4. If reading Drive fails, the settings can still be changed and saved");
+        store("Light", 300);
+        page = await openApp(NEW_URL);
+        global.slowDownloads = { "settings.json": ["fail"] };
+        await page.click("#btn-settings"); await page.waitForSelector("#set-save");
+        await page.waitForFunction(() => !document.querySelector("#set-save").disabled, null, { timeout: 20000 });
+        ok(await fields(page) === "Light/300", "the fields show the settings in memory and are enabled");
+        await page.selectOption("#set-theme", "Dark"); await page.fill("#set-timeout", "600");
+        await page.click("#set-save"); await onMain(page);
+        ok(stored() === "Dark/600" && await theme(page) === "dark", `Save works: Drive ${stored()}, ${await theme(page)} theme`);
+        await page.context().close();
 
-    console.log("5. Cancel, Escape and the checks still work");
-    store("Light", 300);
-    page = await openApp(NEW_URL);
-    global.slowLookups = { "settings.json": [3000] };
-    let n = settingsDownloads();
-    await page.click("#btn-settings"); await page.waitForSelector("#set-save");
-    await page.click("#set-cancel"); await page.waitForSelector("#file-select");
-    ok(stored() === "Light/300", "Cancel while it is looking the settings up: back to the main page at once, nothing changed");
-    await sleep(3500);
-    ok(settingsDownloads() === n && await page.locator(".status-overlay:visible").count() === 0 && await page.locator("#file-select").count() === 1,
-        "the late lookup is dropped: nothing more is read, no 'Loading...' over the main page");
-    global.slowDownloads = { "settings.json": [3000] };
-    n = settingsDownloads();
-    await page.click("#btn-settings"); await page.waitForSelector("#set-save");
-    await waitDownloads(n + 1);
-    await page.keyboard.press("Escape"); await page.waitForSelector("#file-select");
-    ok(stored() === "Light/300", "Escape while it is downloading: back to the main page, nothing changed");
-    await sleep(3500);
-    ok(await page.locator(".status-overlay:visible").count() === 0 && await page.locator("#file-select").count() === 1, "the late download leaves the main page alone");
-    await page.click("#btn-settings"); await page.waitForFunction(() => !document.querySelector("#set-save").disabled);
-    await page.fill("#set-timeout", "5"); await page.click("#set-save");
-    ok((await page.textContent("#set-error")).includes("between 60 and 3600") && stored() === "Light/300", "an out-of-range timeout is still refused, nothing saved");
-    await page.click("#set-cancel"); await page.waitForSelector("#file-select");
-    ok(stored() === "Light/300", "Cancel: back to the main page, nothing changed");
-    await page.context().close();
+        console.log("5. Cancel, Escape and the checks still work");
+        store("Light", 300);
+        page = await openApp(NEW_URL);
+        global.slowLookups = { "settings.json": [3000] };
+        let n = settingsDownloads();
+        await page.click("#btn-settings"); await page.waitForSelector("#set-save");
+        await page.click("#set-cancel"); await page.waitForSelector("#file-select");
+        ok(stored() === "Light/300", "Cancel while it is looking the settings up: back to the main page at once, nothing changed");
+        await sleep(3500);
+        ok(settingsDownloads() === n && await page.locator(".status-overlay:visible").count() === 0 && await page.locator("#file-select").count() === 1,
+            "the late lookup is dropped: nothing more is read, no 'Loading...' over the main page");
+        global.slowDownloads = { "settings.json": [3000] };
+        n = settingsDownloads();
+        await page.click("#btn-settings"); await page.waitForSelector("#set-save");
+        await waitDownloads(n + 1);
+        await page.keyboard.press("Escape"); await page.waitForSelector("#file-select");
+        ok(stored() === "Light/300", "Escape while it is downloading: back to the main page, nothing changed");
+        await sleep(3500);
+        ok(await page.locator(".status-overlay:visible").count() === 0 && await page.locator("#file-select").count() === 1, "the late download leaves the main page alone");
+        await page.click("#btn-settings"); await page.waitForFunction(() => !document.querySelector("#set-save").disabled);
+        await page.fill("#set-timeout", "5"); await page.click("#set-save");
+        ok((await page.textContent("#set-error")).includes("between 60 and 3600") && stored() === "Light/300", "an out-of-range timeout is still refused, nothing saved");
+        await page.click("#set-cancel"); await page.waitForSelector("#file-select");
+        ok(stored() === "Light/300", "Cancel: back to the main page, nothing changed");
+        await page.context().close();
+        ok(errors.length === 0, "no page errors (fail-cancel)" + (errors.length ? ": " + errors.join(" | ") : ""));
+    }
 
-    ok(errors.length === 0, "no page errors" + (errors.length ? ": " + errors.join(" | ") : ""));
+    if (usedParts.join() !== PARTS.join()) throw new Error(`settings.test.parts.mjs must list exactly the parts, in order: ${usedParts.join(", ")}`);
     await browser.close();
     server.kill();
     fs.rmSync(WORK, { recursive: true, force: true });
