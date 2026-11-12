@@ -10,20 +10,22 @@
 // ./serve.py on a free local port, with Google sign-in stubbed and Google Drive
 // faked in memory - no real Google account is ever used.
 //
-// Several suites run at once (--jobs N; default: half the CPU threads, see
+// Several jobs run at once (--jobs N; default: one per CPU thread, see
 // lib/pool.mjs): each suite is its own process with its own temp folder and its
-// own in-memory fake Drive, each browser suite gets its own serve.py, the
-// slowest suites start first, and each suite's output is printed in one piece
-// when it ends (never mixed with another's). --jobs 1 runs them one at a time in
-// the order listed, output live. The 'runner' suite tests this runner.
+// own in-memory fake Drive, each browser suite gets its own serve.py, a suite
+// with a "<suite>.parts.mjs" file next to it runs as several parts at once, the
+// slowest start first, and each job's output is printed in one piece when it
+// ends (never mixed with another's). --jobs 1 runs the suites one at a time in
+// the order listed, whole, output live. --check-parts runs every split suite
+// both whole and in its parts, and checks that the parts run exactly as many
+// checks as the whole. The 'runner' suite tests this runner.
 import { spawn } from "child_process";
 import os from "os";
 import path from "path";
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
-import { runPool, parseJobs, defaultJobs, duration, expandParts } from "./lib/pool.mjs";
+import { runPool, parseJobs, defaultJobs, duration, expandParts, loadParts, countChecks } from "./lib/pool.mjs";
 import { startServer } from "./lib/serve.mjs";
-import { OPTIONS_PARTS } from "./cli/options-parts.mjs";
 
 const TESTS = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(TESTS, "..");
@@ -74,12 +76,20 @@ if (Number.isNaN(jobsGiven)) {
 }
 const cpus = typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
 const JOBS = jobsGiven ?? defaultJobs({ cpus, totalmem: os.totalmem() });
-const LIVE = JOBS === 1;
+const CHECK_PARTS = process.argv.includes("--check-parts");
+const LIVE = JOBS === 1 && !CHECK_PARTS;
 
 // Suites that can run in parts at once (each part its own process, chosen with the environment
-// variable ENOTES_TEST_PART; the suite passes when every part passes). Only when several run at
-// once - with --jobs 1 a suite runs whole, as always.
-const PARTS = { "cli-options": OPTIONS_PARTS };
+// variable ENOTES_TEST_PART; the suite passes when every part passes): those with a
+// "<suite>.parts.mjs" file next to them (see lib/pool.mjs). Only when several run at once - with
+// --jobs 1 a suite runs whole, as always.
+const scriptOf = (s) => (s.browser ? path.join(TESTS, "browser", `${s.name}.test.cjs`) : s.args[0]);
+const partEnv = (part) => (part ? { ENOTES_TEST_PART: part } : {});
+const PARTS = {};
+for (const s of ALL) {
+    const parts = await loadParts(scriptOf(s));
+    if (parts) PARTS[s.name] = parts;
+}
 
 // Roughly how long each suite (or part) takes, in seconds, so the slowest start first when several
 // run at once - the whole run can't end before its slowest one. Measured with 4 at once on a
@@ -121,11 +131,11 @@ function runNode(args, cwd = ROOT, env = {}) {
 }
 
 // A browser suite gets its own serve.py, stopped when the suite ends.
-async function runBrowser(s) {
+async function runBrowser(s, part) {
     const { proc, url } = await startServer({ root: ROOT, dir: path.join(ROOT, "www") });
     running.add(proc);
     try {
-        return await runNode([path.join(TESTS, "browser", `${s.name}.test.cjs`), url], path.join(TESTS, "browser"));
+        return await runNode([scriptOf(s), url], path.join(TESTS, "browser"), partEnv(part));
     } finally {
         proc.kill();
         running.delete(proc);
@@ -135,7 +145,7 @@ async function runBrowser(s) {
 async function runSuite(s, part = null) {
     const start = Date.now();
     try {
-        return await (s.browser ? runBrowser(s) : runNode(s.args, ROOT, part ? { ENOTES_TEST_PART: part } : {}));
+        return await (s.browser ? runBrowser(s, part) : runNode(s.args, ROOT, partEnv(part)));
     } catch (err) {
         if (LIVE) console.log(`  could not run: ${err.message}`);
         return { code: 1, out: `  could not run: ${err.message}\n`, ms: Date.now() - start };
@@ -162,6 +172,36 @@ if (wanted.some((s) => s.browser)) {
 }
 
 const started = Date.now();
+if (CHECK_PARTS) {
+    // Each split suite whole, and each of its parts: the parts together must run exactly the
+    // checks of the whole (and all must pass) - so splitting a suite can never lose a check.
+    const split = toRun.filter((s) => PARTS[s.name]);
+    const jobs = split.flatMap((s) => [{ suite: s, part: null, label: `${s.name} (whole)` },
+        ...PARTS[s.name].map((part) => ({ suite: s, part, label: `${s.name} [${part}]` }))]);
+    console.log(`Checking ${split.length} split suite(s)${split.length ? " (" + split.map((s) => s.name).join(", ") + ")" : ""}: each whole and in its parts - ${jobs.length} job(s), up to ${JOBS} at a time.`);
+    const order = [...jobs].sort((a, b) => (a.part === null ? 0 : 1) - (b.part === null ? 0 : 1) || (EXPECTED_SECONDS[b.label] ?? 60) - (EXPECTED_SECONDS[a.label] ?? 60));
+    const got = new Map();
+    await runPool(order, JOBS, async (t) => {
+        const r = await runSuite(t.suite, t.part);
+        const n = countChecks(r.out);
+        got.set(t.label, { code: r.code, n });
+        console.log(`  ${r.code === 0 ? "PASS" : "FAIL"}  ${t.label}: ${n} checks, ${duration(r.ms)}`);
+        if (r.code !== 0) process.stdout.write(r.out.split("\n").slice(-40).join("\n") + "\n");
+    });
+    console.log("\n===== Summary =====");
+    let bad = 0;
+    for (const s of split) {
+        const whole = got.get(`${s.name} (whole)`);
+        const parts = PARTS[s.name].map((p) => got.get(`${s.name} [${p}]`));
+        const sum = parts.reduce((a, r) => a + r.n, 0);
+        const good = whole.code === 0 && parts.every((r) => r.code === 0) && whole.n > 0 && sum === whole.n;
+        if (!good) bad++;
+        console.log(`  ${good ? "PASS" : "FAIL"}  ${s.name}: whole ${whole.n} checks${whole.code ? " (FAILED)" : ""}, its ${parts.length} parts ${sum} checks${parts.some((r) => r.code) ? " (a part FAILED)" : ""}`);
+    }
+    console.log(`\nTook ${duration(Date.now() - started)} with --jobs ${JOBS}.`);
+    console.log(bad ? `\n${bad} split suite(s) FAILED the check` : split.length ? "\nEVERY SPLIT SUITE'S PARTS RUN EXACTLY ITS CHECKS" : "\nNo split suites among those asked for.");
+    process.exit(bad ? 1 : 0);
+}
 if (LIVE) {
     for (const s of toRun) {
         console.log(`\n===== ${s.name}: ${s.desc} =====`);
