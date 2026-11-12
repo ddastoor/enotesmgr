@@ -137,6 +137,14 @@ async function onMain(page) {
     if (await r.count()) { page.sawReminder = true; await r.locator(".modal-actions button", { hasText: "Later" }).click(); }
     else page.sawReminder = false;
 }
+// Open the search popup (toolbar button) and wait until its search box has the focus. The popup
+// focuses it a moment after opening; keys pressed before that (faster than any person types, but
+// possible for a test on a busy machine) would go elsewhere - e.g. a second Enter meant to open the
+// highlighted note would land back in the box and open nothing.
+async function openSearch(page) {
+    await page.click("#tb-search");
+    await page.waitForFunction(() => document.activeElement && document.activeElement.classList.contains("search-input"));
+}
 async function logout(page) { await page.click("#btn-logout"); await page.waitForSelector("#login-btn"); }
 const recoveryFiles = () => children(folderByName("Recovery").id).filter((f) => !f.name.startsWith("one-or-no"));
 async function readDownload(dl) { return fs.readFileSync(await dl.path(), "utf8").trim().split("\n"); }
@@ -148,5 +156,5 @@ function finish() {
 
 module.exports = {
     chromium, fs, BASE, FOLDER, drive, children, folderByName, parseMultipart, driveLog, driveRoute, GIS_STUB,
-    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload,
+    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload, openSearch,
 };

@@ -8,7 +8,7 @@
 // decrypting them locally without any Drive call.
 // Usage: node sensitive-notes.test.cjs <baseUrl>   (normally via ../run-all.mjs)
 const {
-    chromium, fs, drive, driveLog, ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout,
+    chromium, fs, drive, driveLog, ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, openSearch,
 } = require("./lib/harness.cjs");
 const path = require("path");
 const os = require("os");
@@ -244,7 +244,7 @@ function cli(cliPath, args, input, driveFile) {
     console.log("3. Opening a sensitive note (dropdown / search / Refresh) asks for its password every time");
     const selectedLabel = () => page.$eval("#file-select", (s) => s.options[s.selectedIndex].textContent);
     const searchPick = async (q) => {
-        await page.click("#tb-search");
+        await openSearch(page);
         await page.fill(".search-input", q); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter");
     };
     // `how`: "cancel" | a wrong password; the note must then NOT be shown.

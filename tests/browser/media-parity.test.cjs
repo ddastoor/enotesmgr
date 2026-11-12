@@ -11,7 +11,7 @@
 // Only the designed differences are allowed: the sensitive note asks for its
 // password when opened, warns before Download, and is listed with a padlock.
 // Usage: node media-parity.test.cjs <baseUrl>   (normally via ../run-all.mjs)
-const { chromium, fs, drive, GIS_STUB, driveRoute, ok, finish, newPage, modal, clickModal, login, onMain, unlockInput } = require("./lib/harness.cjs");
+const { chromium, fs, drive, GIS_STUB, driveRoute, ok, finish, newPage, modal, clickModal, login, onMain, unlockInput, openSearch } = require("./lib/harness.cjs");
 const path = require("path");
 const { pathToFileURL } = require("url");
 
@@ -200,7 +200,7 @@ const NOTE_PW = "NotePass1";
     for (const [kind, name, pw] of [["normal", "note-n", null], ["sensitive", "note-s", NOTE_PW]]) {
         // Search finds it (the sensitive one then asks for its password).
         await page.selectOption("#file-select", ""); await status();
-        await page.click("#tb-search");
+        await openSearch(page);
         await page.fill(".search-input", name); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter");
         if (pw) { await modal(page, "is a sensitive note").waitFor(); await modal(page, "is a sensitive note").locator("input").fill(pw); await clickModal(page, "is a sensitive note", "Unlock"); }
         await page.waitForFunction((n) => document.querySelector("#file-select").value === n, name); await status();
