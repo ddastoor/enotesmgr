@@ -432,7 +432,7 @@ for (const v of Object.values(vaults)) {
 section("\n=== usage errors ===");
 for (const [label, args] of [["no arguments", []], ["-m missing", ["-t", "GOODTOKEN"]], ["-m bogus", ["-m", "maybe"]], ["-m without a value", ["-m"]], ["-m ON (case)", ["-m", "ON"]]]) {
     const r = run(NEWCLI, args, "");
-    ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on', 'off' or 'sensitive'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
+    ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on', 'off', 'sensitive', 'export' or 'import'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
     ok(r.out.includes("-m sensitive") && r.out.includes("--help"), `${label}: usage lists '-m sensitive' and points to --help`);
     ok(r.out.includes("'-m on -x'") && r.out.includes("Config/config.json") && r.out.includes("/Entries") && r.out.includes("hidden app-data area")
         && r.out.includes("master password that was in use") && r.out.includes("Decrypt Sensitive File"),

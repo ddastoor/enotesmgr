@@ -4,8 +4,8 @@
 //   node tests/run-all.mjs                 # everything
 //   node tests/run-all.mjs --only crypto   # one suite (repeat --only for more)
 //
-// Suites: verify, crypto, cli, sensitive, cli-options, app-core, features, framing, password-rules,
-// recovery-lockout, data-safety, cli-roundtrip, sensitive-notes, cli-matrix, media-parity, new-user, google-signin, fonts. The browser suites run against the app in ./www served by
+// Suites: verify, crypto, cli, sensitive, cli-options, cli-transfer, cli-regression, app-core, features, framing, password-rules,
+// recovery-lockout, data-safety, cli-roundtrip, sensitive-notes, cli-matrix, media-parity, new-user, transfer, google-signin, fonts. The browser suites run against the app in ./www served by
 // ./serve.py on a free local port, with Google sign-in stubbed and Google Drive
 // faked in memory - no real Google account is ever used.
 import { spawn, spawnSync } from "child_process";
@@ -26,6 +26,8 @@ const NODE_SUITES = [
     { name: "cli", desc: "export CLI (vs. the original CLI)", args: [path.join(TESTS, "cli/run.mjs")] },
     { name: "sensitive", desc: "sensitive notes: envelope, two layers, export rules, CLI", args: [path.join(TESTS, "sensitive.test.mjs")] },
     { name: "cli-options", desc: "export CLI: every option combination x vaults with / without sensitive notes", args: [path.join(TESTS, "cli/options.mjs")] },
+    { name: "cli-transfer", desc: "export CLI: -m export / -m import (moving notes to another account)", args: [path.join(TESTS, "cli/transfer.mjs")] },
+    { name: "cli-regression", desc: "export CLI: the existing modes behave exactly as before -m export / -m import", args: [path.join(TESTS, "cli/regression.mjs")] },
 ];
 const BROWSER_SUITES = [
     { name: "app-core", desc: "setup, unlock, notes, recovery, timeout, CSP, popup" },
@@ -39,6 +41,7 @@ const BROWSER_SUITES = [
     { name: "cli-matrix", desc: "every CLI mode x text / embedded images x normal / sensitive" },
     { name: "media-parity", desc: "a sensitive note can do everything a normal note can" },
     { name: "new-user", desc: "a new user: setup and normal use identical to main (before sensitive notes)" },
+    { name: "transfer", desc: "end to end: app account A -> -m export -> -m import -> app account B, notes identical" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
 ];

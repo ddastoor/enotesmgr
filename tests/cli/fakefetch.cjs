@@ -1,6 +1,12 @@
-// Preload: replaces fetch with an in-memory fake Google Drive (read-only API used by the CLI).
+// Preload: replaces fetch with an in-memory fake Google Drive (the API the CLI
+// uses). Reads are served from FAKE_DRIVE; files that '-m import' creates are
+// added and written back to FAKE_DRIVE, so a test can inspect them afterwards.
+// FAKE_FAIL_CREATE="name1,name2": creating a file with one of these names fails.
+// FAKE_EMAIL: the account's e-mail address (default tester@gmail.com).
 const fs = require("fs");
 const files = JSON.parse(fs.readFileSync(process.env.FAKE_DRIVE, "utf8"));
+const failCreate = new Set((process.env.FAKE_FAIL_CREATE || "").split(",").filter(Boolean));
+let created = 0;
 // FAKE_HIDE_ONCE="name1,name2": the first lookup of each name comes back empty
 // (a simulated momentary Drive miss), later lookups find it.
 const hideOnce = new Set((process.env.FAKE_HIDE_ONCE || "").split(",").filter(Boolean));
@@ -10,6 +16,20 @@ globalThis.fetch = async (url, opts = {}) => {
   const h = opts.headers || {};
   if ((h.Authorization || h.authorization) !== "Bearer GOODTOKEN") return new Response("unauthorized", { status: 401 });
   let mm;
+  const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json" } });
+  if (u.pathname === "/drive/v3/about") return json({ user: { emailAddress: process.env.FAKE_EMAIL || "tester@gmail.com", displayName: "Test User" } });
+  if (u.pathname === "/upload/drive/v3/files" && (opts.method || "GET") === "POST") {
+    const ctype = h["Content-Type"] || h["content-type"] || "";
+    const boundary = /boundary=(.+)$/.exec(ctype)[1];
+    const parts = String(opts.body).split("--" + boundary).slice(1, -1).map((p) => p.slice(p.indexOf("\r\n\r\n") + 4).replace(/\r\n$/, ""));
+    const meta = JSON.parse(parts[0]);
+    if (failCreate.has(meta.name)) return json({ error: "injected failure" }, 500);
+    const f = { id: "created" + (++created) + "-" + Math.random().toString(36).slice(2, 8), name: meta.name, parents: meta.parents || [], mimeType: meta.mimeType, content: parts[1] };
+    if (meta.appProperties) f.appProperties = meta.appProperties;
+    files.push(f);
+    fs.writeFileSync(process.env.FAKE_DRIVE, JSON.stringify(files));
+    return json({ id: f.id, name: f.name });
+  }
   if (u.pathname === "/drive/v3/files") {
     const q = u.searchParams.get("q");
     const parent = /'([^']+)' in parents/.exec(q)[1];
