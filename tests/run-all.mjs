@@ -56,6 +56,7 @@ const BROWSER_SUITES = [
     { name: "transfer", desc: "end to end: app account A -> -m export -> -m import -> app account B, notes identical" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
+    { name: "settings", desc: "Settings can't be changed while they load from Drive; a late load is ignored" },
 ];
 
 // --- what to run --------------------------------------------------------------

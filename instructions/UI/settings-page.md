@@ -70,8 +70,13 @@ Settings page {
     }
 
     on load {
+        populate all settings page editable fields at once with the values from the settings json in memory
         fetch settings json from config folder. Decrypt it using the file password to get settings json. 
         populate all settings page editable fields with the values from settings json
+
+        While that fetch is under way (the lookup in Drive, then the download with "Loading..." on screen), the editable fields and the Save button are disabled - so the settings can't be changed or saved until the fetched values are in. (Otherwise the fetched values would silently overwrite a change made meanwhile, and a Save made meanwhile would be undone in memory - stored in Drive but not used by the app until the next login.) Cancel and Escape work all the time.
+        If the fetch fails, the fields keep the values from memory and are enabled (the settings can still be changed and saved).
+        If the page is left before the fetch is done, its result is ignored: it changes nothing (not the settings in memory, not the page now shown) - a lookup still under way doesn't go on to download.
     }
 
 }
