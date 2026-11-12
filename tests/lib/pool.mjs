@@ -1,4 +1,6 @@
 // Helpers for tests/run-all.mjs: run several suites at once. Tested by tests/runner.test.mjs.
+import fs from "fs";
+import { pathToFileURL } from "url";
 
 // Run worker(item, index) for every item, at most `jobs` at a time, starting them in the
 // items' order. Resolves to the workers' results in the items' order. If a worker throws, no
@@ -31,12 +33,34 @@ export function parseJobs(args) {
     return n >= 1 ? n : NaN;
 }
 
-// How many suites to run at once by default: half the CPU threads (a browser suite keeps more
-// than one busy: Chromium, the test, the server), at most one per ~1.5 GB of memory (Chromium
-// plus Argon2's 64 MiB per key derivation), at most 8, at least 1.
+// How many jobs to run at once by default: one per CPU thread (the jobs are mostly busy with
+// Argon2, one thread each), at most one per ~1.5 GB of memory (a browser suite's Chromium plus
+// Argon2's 64 MiB per key derivation), at most 32, at least 1.
 export function defaultJobs({ cpus, totalmem }) {
     const byMemory = Math.floor(totalmem / (1.5 * 1024 ** 3));
-    return Math.max(1, Math.min(Math.floor(cpus / 2), byMemory, 8));
+    return Math.max(1, Math.min(cpus, byMemory, 32));
+}
+
+// A suite can run in parts at once: a file next to it, named like it but ending in ".parts.mjs"
+// (cli/options.mjs -> cli/options.parts.mjs, browser/x.test.cjs -> browser/x.test.parts.mjs),
+// exports PARTS, the names of its parts. Run with the environment variable ENOTES_TEST_PART set
+// to one of them, the suite runs just that part. -> the names, or null (no such file).
+export const partsFileOf = (script) => script.replace(/\.(c|m)?js$/, ".parts.mjs");
+export async function loadParts(script) {
+    const file = partsFileOf(script);
+    if (!fs.existsSync(file)) return null;
+    const { PARTS } = await import(pathToFileURL(file).href);
+    if (!Array.isArray(PARTS) || PARTS.length === 0 || new Set(PARTS).size !== PARTS.length ||
+        PARTS.some((p) => typeof p !== "string" || !/^[\w.:-]+$/.test(p))) {
+        throw new Error(`${file}: PARTS must be a non-empty list of distinct names (letters, digits, _ . : -)`);
+    }
+    return PARTS;
+}
+
+// How many checks a suite's output reports: its "N checks" line, else its PASS / FAIL lines.
+export function countChecks(out) {
+    const m = out.match(/^(\d+) checks\b/m);
+    return m ? Number(m[1]) : (out.match(/^\s*(PASS|FAIL) /gm) || []).length;
 }
 
 // The jobs for a list of suites: one per suite, or one per part for a suite listed in `parts`

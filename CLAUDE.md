@@ -50,10 +50,15 @@ the owner says so.
 ## Running the tests (standing rule from the repo owner)
 
 - Always run the tests with the fast parallel runner, `node tests/run-all.mjs`:
-  several suites at once (by default half the CPU threads; `--jobs N` to
-  choose), the slowest first, `cli-options` split into parts, each suite's
-  output in one piece with its time. A targeted run is the same command with
-  `--only <suite>` (repeatable) - still in parallel.
+  several jobs at once (by default one per CPU thread; `--jobs N` to choose),
+  the slowest first, long suites split into parts (a `<suite>.parts.mjs` file
+  next to the suite), each job's output in one piece with its time. A targeted
+  run is the same command with `--only <suite>` (repeatable) - still in
+  parallel.
+- Keep the suites as parallel as possible: when a suite gets long, split it
+  into parts (see `tests/README.md`), and after changing how a suite is split
+  run `node tests/run-all.mjs --check-parts --only <suite>` - the parts must
+  run exactly the checks of the whole suite.
 - Don't run suites one at a time for a test run you report (not
   `--jobs 1`, not `node tests/<suite>` by hand); `--jobs 1` is only for
   watching a single suite's output live while debugging.

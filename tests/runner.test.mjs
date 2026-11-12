@@ -2,12 +2,14 @@
 // --jobs / --only, its own serve.py per browser suite (never someone else's server on a
 // reused port), and run-all end to end on quick suites.
 import { spawnSync } from "child_process";
+import fs from "fs";
 import http from "http";
+import os from "os";
 import path from "path";
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
-import { runPool, parseJobs, defaultJobs, duration, expandParts } from "./lib/pool.mjs";
-import { OPTIONS_PARTS } from "./cli/options-parts.mjs";
+import { runPool, parseJobs, defaultJobs, duration, expandParts, partsFileOf, loadParts, countChecks } from "./lib/pool.mjs";
+import { PARTS as OPTIONS_PARTS, VAULTS, GROUPS } from "./cli/options.parts.mjs";
 import { startServer, freePort } from "./lib/serve.mjs";
 
 const TESTS = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +19,10 @@ let fails = 0, checks = 0;
 const ok = (c, m) => { checks++; console.log((c ? "  PASS " : "  FAIL ") + m); if (!c) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const GiB = 1024 ** 3;
+const runAll = (args) => {
+    const r = spawnSync(process.execPath, [RUN_ALL, ...args], { cwd: ROOT, encoding: "utf8", timeout: 10 * 60 * 1000 });
+    return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
+};
 
 console.log("1. The pool: at most N at a time, every item once, results in order");
 {
@@ -78,11 +84,11 @@ console.log("\n2. --jobs, the default number of jobs, durations");
     const bad = cases.filter(([args, want]) => { const got = parseJobs(args); return !(Object.is(got, want)); });
     ok(bad.length === 0, "--jobs N / --jobs=N / -j N; not given -> default; 0, nothing, x, 2.5, -3 -> refused" + (bad.length ? ": wrong for " + bad.map(([a]) => a.join(" ")).join("; ") : ""));
     const d = [
-        [{ cpus: 12, totalmem: 15 * GiB }, 6], [{ cpus: 4, totalmem: 15 * GiB }, 2], [{ cpus: 1, totalmem: 16 * GiB }, 1],
-        [{ cpus: 2, totalmem: 8 * GiB }, 1], [{ cpus: 64, totalmem: 256 * GiB }, 8], [{ cpus: 12, totalmem: 3 * GiB }, 2], [{ cpus: 12, totalmem: 1 * GiB }, 1],
+        [{ cpus: 12, totalmem: 15 * GiB }, 10], [{ cpus: 4, totalmem: 15 * GiB }, 4], [{ cpus: 1, totalmem: 16 * GiB }, 1],
+        [{ cpus: 2, totalmem: 8 * GiB }, 2], [{ cpus: 64, totalmem: 256 * GiB }, 32], [{ cpus: 12, totalmem: 3 * GiB }, 2], [{ cpus: 12, totalmem: 1 * GiB }, 1],
     ];
     const wrong = d.filter(([m, want]) => defaultJobs(m) !== want);
-    ok(wrong.length === 0, "default: half the CPU threads, at most one per 1.5 GB of memory, 1 to 8 (12 threads + 15 GB -> 6; 4 -> 2; 64 -> 8; 1 GB -> 1)" +
+    ok(wrong.length === 0, "default: one job per CPU thread, at most one per 1.5 GB of memory, 1 to 32 (12 threads + 15 GB -> 10; 4 -> 4; 64 -> 32; 1 GB -> 1)" +
         (wrong.length ? ": wrong for " + JSON.stringify(wrong.map(([m]) => m)) : ""));
     ok(duration(0) === "0s" && duration(42400) === "42s" && duration(59600) === "1m 00s" && duration(185000) === "3m 05s", "durations read '42s', '3m 05s'");
 }
@@ -94,10 +100,37 @@ console.log("\n2b. A suite run in parts at once (cli-options)");
     ok(jobs.map((j) => j.label).join("|") === "a|b [x]|b [y]|c" && jobs.map((j) => j.part).join("|") === "|x|y|" &&
         jobs[1].suite === b && jobs[2].suite === b && jobs[0].suite === a, "a suite with parts becomes one job per part ('b [x]', 'b [y]'), the others one job each, in order");
     ok(expandParts([a], {}).length === 1 && expandParts([], { b: ["x"] }).length === 0, "no parts: one job; no suites: no jobs");
-    ok(OPTIONS_PARTS.join() === "none,mixed,sensitive,clash,rest", "cli-options parts: its four vaults + 'rest' (one shared list, which cli-options checks against its vaults)");
+    ok(OPTIONS_PARTS.length === VAULTS.length * GROUPS.length + 1 && OPTIONS_PARTS.join() === [...VAULTS.flatMap((v) => GROUPS.map((g) => `${v}:${g}`)), "rest"].join() && OPTIONS_PARTS[0] === "none:offline",
+        `cli-options parts: each of its ${VAULTS.length} vaults' ${GROUPS.length} groups ('none:offline' ...) + 'rest' - ${OPTIONS_PARTS.length}, from cli/options.parts.mjs, which cli-options checks against its vaults and groups`);
     const r = spawnSync(process.execPath, [path.join(TESTS, "cli", "options.mjs")], { cwd: ROOT, encoding: "utf8", env: { ...process.env, ENOTES_TEST_PART: "bogus" }, timeout: 60000 });
-    ok(r.status === 2 && r.stderr.includes("ENOTES_TEST_PART must be one of none, mixed, sensitive, clash, rest") && !r.stdout.includes("checks"),
+    ok(r.status === 2 && r.stderr.includes(`ENOTES_TEST_PART must be one of ${OPTIONS_PARTS.join(", ")} (or unset), not 'bogus'`) && !r.stdout.includes("checks"),
         "cli-options with an unknown part: refused at once (a typo can't quietly run nothing)");
+}
+
+console.log("\n2c. Finding a suite's parts; counting its checks");
+{
+    ok(partsFileOf("/t/cli/options.mjs") === "/t/cli/options.parts.mjs" && partsFileOf("/t/browser/x.test.cjs") === "/t/browser/x.test.parts.mjs" && partsFileOf("/t/v.js") === "/t/v.parts.mjs",
+        "the parts file is the suite's file with '.parts.mjs' (options.mjs -> options.parts.mjs, x.test.cjs -> x.test.parts.mjs)");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-runner-parts-"));
+    const suite = (name, parts) => {
+        fs.writeFileSync(path.join(dir, name + ".mjs"), "");
+        if (parts !== undefined) fs.writeFileSync(path.join(dir, name + ".parts.mjs"), `export const PARTS = ${JSON.stringify(parts)};`);
+        return path.join(dir, name + ".mjs");
+    };
+    ok(JSON.stringify(await loadParts(suite("good", ["a", "b:c", "d.e-f_g"]))) === '["a","b:c","d.e-f_g"]', "a suite with a parts file: its parts");
+    ok(await loadParts(suite("whole")) === null, "a suite without one: null (it runs whole)");
+    let refused = 0;
+    for (const [name, parts] of [["empty", []], ["dup", ["a", "a"]], ["space", ["a b"]], ["notlist", "a"], ["blank", [""]]]) {
+        try { await loadParts(suite(name, parts)); } catch (e) { if (e.message.includes("PARTS must be")) refused++; }
+    }
+    ok(refused === 5, "a parts file with no parts, the same part twice, a name with a space, not a list or an empty name: refused with a clear error");
+    fs.rmSync(dir, { recursive: true, force: true });
+    ok(countChecks("x\n2314 checks, ALL PASSED\n") === 2314 && countChecks("1. a\n  PASS one\n  FAIL two\n  PASS three\nALL PASSED") === 3 && countChecks("nothing") === 0,
+        "the checks a suite ran: its 'N checks' line, else its PASS / FAIL lines");
+    const r = runAll(["--only", "verify", "--only", "crypto", "--check-parts"]);
+    ok(r.code === 0 && r.out.includes("Checking 0 split suite(s)") && r.out.includes("No split suites among those asked for."), "--check-parts with no split suite among those asked for: says so, nothing run");
+    const all = runAll(["--only", "nosuch", "--check-parts"]);
+    ok(all.code === 2 && all.out.includes("Unknown suite(s): nosuch"), "--check-parts with an unknown suite: refused like any run");
 }
 
 console.log("\n3. Each browser suite's own serve.py");
@@ -141,10 +174,6 @@ const isApp = (t) => t.status === 200 && t.text.includes("<html") && !t.text.inc
 }
 
 console.log("\n4. run-all end to end");
-const runAll = (args) => {
-    const r = spawnSync(process.execPath, [RUN_ALL, ...args], { cwd: ROOT, encoding: "utf8", timeout: 10 * 60 * 1000 });
-    return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
-};
 for (const args of [["--jobs", "0"], ["--jobs", "x"], ["--jobs"], ["-j", "2.5"]]) {
     const r = runAll(["--only", "verify", ...args]);
     ok(r.code === 2 && r.out.includes("--jobs needs a whole number of 1 or more") && !r.out.includes("====="), `${args.join(" ")}: refused with a clear message, nothing run`);
