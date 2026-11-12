@@ -46,3 +46,14 @@ the owner says so.
   (`node src/export/verify.mjs` checks this).
 - The specs in `instructions/` describe intended behaviour; update them along
   with behaviour changes.
+
+## Running the tests (standing rule from the repo owner)
+
+- Always run the tests with the fast parallel runner, `node tests/run-all.mjs`:
+  several suites at once (by default half the CPU threads; `--jobs N` to
+  choose), the slowest first, `cli-options` split into parts, each suite's
+  output in one piece with its time. A targeted run is the same command with
+  `--only <suite>` (repeatable) - still in parallel.
+- Don't run suites one at a time for a test run you report (not
+  `--jobs 1`, not `node tests/<suite>` by hand); `--jobs 1` is only for
+  watching a single suite's output live while debugging.

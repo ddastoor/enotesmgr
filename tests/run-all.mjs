@@ -78,14 +78,14 @@ const LIVE = JOBS === 1;
 const PARTS = { "cli-options": OPTIONS_PARTS };
 
 // Roughly how long each suite (or part) takes, in seconds, so the slowest start first when several
-// run at once - the whole run can't end before its slowest one. Measured with 4-5 at once on a
-// 4-core machine; only the order matters. Unlisted: 60.
+// run at once - the whole run can't end before its slowest one. Measured with 4 at once on a
+// 4-core machine (all suites, incl. those of other branches); only the order matters. Unlisted: 60.
 const EXPECTED_SECONDS = {
-    "cli-options [mixed]": 190, "cli-options [sensitive]": 160, "cli-regression": 150, "recovery-lockout": 110,
-    "cli-options [clash]": 60, "cli-transfer": 60, "sensitive-notes": 55, "cli-matrix": 50, "media-parity": 45,
-    "cli-options [none]": 45, "transfer": 45, "new-user": 40, "cli": 35, "data-safety": 35, "app-core": 32, "features": 25,
-    "cli-roundtrip": 15, "runner": 12, "fonts": 10, "password-rules": 9, "google-signin": 5, "cli-options [rest]": 3,
-    "crypto": 3, "sensitive": 2, "framing": 2, "verify": 1,
+    "cli-regression": 267, "cli-options [mixed]": 196, "cli-transfer": 172, "cli-options [sensitive]": 165,
+    "recovery-lockout": 109, "settings": 75, "cli-options [clash]": 63, "sensitive-notes": 57, "cli-matrix": 53,
+    "transfer": 47, "cli-options [none]": 46, "new-user": 41, "media-parity": 35, "cli": 34, "data-safety": 34,
+    "app-core": 31, "features": 23, "cli-roundtrip": 14, "runner": 12, "fonts": 10, "password-rules": 9,
+    "google-signin": 5, "cli-options [rest]": 3, "crypto": 3, "sensitive": 2, "framing": 2, "verify": 1,
 };
 
 // --- running one suite -----------------------------------------------------------
