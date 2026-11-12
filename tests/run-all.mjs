@@ -91,15 +91,31 @@ for (const s of ALL) {
     if (parts) PARTS[s.name] = parts;
 }
 
-// Roughly how long each suite (or part) takes, in seconds, so the slowest start first when several
-// run at once - the whole run can't end before its slowest one. Measured with 4 at once on a
-// 4-core machine (all suites, incl. those of other branches); only the order matters. Unlisted: 60.
+// Roughly how long each job (a suite, or a part of one) takes, in seconds, so the slowest start
+// first when several run at once - the whole run can't end before its slowest one. Measured with
+// 4 at once on a 4-core machine; only the order matters. Unlisted: 60.
 const EXPECTED_SECONDS = {
-    "cli-regression": 267, "cli-options [mixed]": 196, "cli-transfer": 172, "cli-options [sensitive]": 165,
-    "recovery-lockout": 109, "settings": 75, "cli-options [clash]": 63, "sensitive-notes": 57, "cli-matrix": 53,
-    "transfer": 47, "cli-options [none]": 46, "new-user": 41, "media-parity": 35, "cli": 34, "data-safety": 34,
-    "app-core": 31, "features": 23, "cli-roundtrip": 14, "runner": 12, "fonts": 10, "password-rules": 9,
-    "google-signin": 5, "cli-options [rest]": 3, "crypto": 3, "sensitive": 2, "framing": 2, "verify": 1,
+    "cli-options [mixed:offline]": 79, "cli-transfer [import-errors]": 69,
+    "cli-options [sensitive:offline]": 64, "cli-options [mixed:sensitive]": 58, "sensitive-notes": 57,
+    "cli-matrix": 55, "cli-options [sensitive:sensitive]": 54, "transfer": 51, "cli-transfer [import]": 50,
+    "cli-options [mixed:online]": 48, "cli-regression [mixed:off]": 47, "recovery-lockout [reset]": 47,
+    "cli-transfer [export-errors]": 46, "new-user": 43, "cli-regression [mixed:sensitive]": 41,
+    "cli-options [sensitive:online]": 39, "cli-regression [mixed:on]": 38, "cli-regression [none:off]": 36,
+    "data-safety": 36, "media-parity": 35, "cli": 35, "settings [change]": 33, "app-core": 33,
+    "cli-regression [none:on]": 32, "recovery-lockout [last-code]": 30, "settings [leave]": 30,
+    "recovery-lockout [code-sets]": 29, "cli-options [clash:offline]": 28, "cli-transfer [export]": 27,
+    "features": 24, "cli-transfer [rest]": 23, "cli-regression [sensitive:on]": 23,
+    "recovery-lockout [setup]": 23, "cli-options [none:offline]": 20, "cli-options [clash:online]": 20,
+    "cli-regression [none:sensitive]": 19, "cli-regression [sensitive:sensitive]": 19,
+    "cli-regression [sensitive:off]": 18, "settings [fail-cancel]": 18, "cli-options [none:online]": 17,
+    "settings [loading]": 17, "cli-roundtrip": 15, "cli-options [mixed:offline-notes]": 14, "runner": 12,
+    "fonts": 10, "cli-options [mixed:mirror]": 9, "cli-options [clash:sensitive]": 9, "password-rules": 9,
+    "cli-options [sensitive:offline-notes]": 8, "cli-options [none:offline-notes]": 7,
+    "cli-options [sensitive:mirror]": 7, "cli-options [clash:offline-notes]": 5, "google-signin": 5,
+    "cli-options [none:mirror]": 3, "cli-options [none:sensitive]": 3, "cli-options [clash:mirror]": 3,
+    "cli-regression [mixed:on-x]": 3, "crypto": 3, "cli-regression [none:on-x]": 2,
+    "cli-regression [sensitive:on-x]": 2, "cli-options [rest]": 2, "sensitive": 2, "framing": 2,
+    "cli-regression [rest]": 1, "verify": 1,
 };
 
 // --- running one suite -----------------------------------------------------------
