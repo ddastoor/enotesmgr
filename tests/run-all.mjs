@@ -41,6 +41,7 @@ const BROWSER_SUITES = [
     { name: "new-user", desc: "a new user: setup and normal use identical to main (before sensitive notes)" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
+    { name: "settings", desc: "Settings can't be changed while they load from Drive; a late load is ignored" },
 ];
 
 // Run one suite; a suite that hangs is killed after SUITE_TIMEOUT_MS and fails.

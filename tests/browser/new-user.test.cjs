@@ -2,7 +2,8 @@
 // The app from BEFORE the feature (main, commit PRE_FEATURE_COMMIT) and the
 // current app each set up a new account and are then used the same way (normal
 // notes only), side by side, and must behave identically:
-//   - the code a new user's setup runs is byte-for-byte unchanged;
+//   - the code a new user's setup runs is byte-for-byte unchanged (except the
+//     settings page, deliberately fixed since: see settings.test.cjs);
 //   - login, setup, unlock, settings and recovery-codes screens are identical;
 //   - setup writes the same Drive tree: same folders, files, names, metadata,
 //     sizes, the same decrypted config.json / settings.json / recovery files, the
@@ -29,9 +30,12 @@ const MASTER = "Master123";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
 // What a new user's setup (and normal use) runs: none of it may differ from main.
+// (Not www/js/pages/settings.js: changed on purpose since - while it re-reads the settings from
+// Drive they can't be changed, see settings.test.cjs. Its screen and what it saves are still
+// compared below, and must be identical.)
 const SETUP_CODE = ["www/index.html", "www/js/app.js", "www/js/state.js", "www/js/drive.js", "www/js/flow.js", "www/js/newUserLogin.js",
     "www/js/recovery.js", "www/js/recoveryReminder.js", "www/js/pages/login.js", "www/js/pages/setup.js", "www/js/pages/masterPassword.js",
-    "www/js/pages/resetMasterPassword.js", "www/js/pages/settings.js", "www/js/pages/recoveryCodes.js", "www/js/lib/meta.js",
+    "www/js/pages/resetMasterPassword.js", "www/js/pages/recoveryCodes.js", "www/js/lib/meta.js",
     "www/js/lib/driveConfig.js", "www/js/lib/google.js", "www/js/lib/fileType.js", "www/js/crypto/crypto.js", "www/js/crypto/crypto.wasm"];
 
 const freePort = () => new Promise((resolve) => { const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
@@ -39,7 +43,7 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
 (async () => {
     console.log("1. The code a new user's setup runs is unchanged");
     const diff = spawnSync("git", ["-C", ROOT, "diff", "--name-only", PRE_FEATURE_COMMIT, "--", ...SETUP_CODE], { encoding: "utf8" });
-    ok(diff.status === 0 && diff.stdout.trim() === "", `${SETUP_CODE.length} setup / login / unlock / settings / recovery / crypto files byte-for-byte as on main` + (diff.stdout.trim() ? ": changed " + diff.stdout.trim().split("\n").join(", ") : ""));
+    ok(diff.status === 0 && diff.stdout.trim() === "", `${SETUP_CODE.length} setup / login / unlock / recovery / crypto files byte-for-byte as on main` + (diff.stdout.trim() ? ": changed " + diff.stdout.trim().split("\n").join(", ") : ""));
 
     // Serve the pre-feature app (main) next to the current one.
     const oldDir = path.join(WORK, "old");
@@ -126,8 +130,8 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
         await clickModal(page, "Keyboard shortcuts", "Close");
         // Settings and recovery-codes screens.
         // (The settings page re-reads settings.json from Drive after it shows; wait
-        // for that, so our changes aren't overwritten by it - a known timing issue
-        // on main too, not part of this check.)
+        // for that: the old app lets a change made before it be overwritten by it -
+        // fixed since, see settings.test.cjs - and this check is about the screens.)
         const before = driveLog.length;
         await page.click("#btn-settings"); await page.waitForSelector("#set-save");
         for (let i = 0; i < 100 && !driveLog.slice(before).some((l) => l.includes("alt=media")); i++) await page.waitForTimeout(50);
