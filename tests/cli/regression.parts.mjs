@@ -1,8 +1,8 @@
 // The parts tests/cli/regression.mjs can run on its own (environment variable ENOTES_TEST_PART):
-// each vault's four modes ("<vault>:<mode>"), "export-import" (-m export / -m import exactly as before
-// -m rotate) and "rest" (usage / help). tests/run-all.mjs finds
+// each vault's four modes ("<vault>:<mode>"), "transfer:export", "transfer:import",
+// "transfer:import-errors" (-m export / -m import exactly as before -m rotate) and "rest" (usage / help). tests/run-all.mjs finds
 // this file next to the suite and runs them at once. regression.mjs checks that these are exactly
 // its vaults and modes.
 export const VAULTS = ["none", "mixed", "sensitive"];
 export const MODES = ["on", "on-x", "off", "sensitive"];
-export const PARTS = [...VAULTS.flatMap((v) => MODES.map((m) => `${v}:${m}`)), "export-import", "rest"];
+export const PARTS = [...VAULTS.flatMap((v) => MODES.map((m) => `${v}:${m}`)), "transfer:export", "transfer:import", "transfer:import-errors", "rest"];

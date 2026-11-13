@@ -203,7 +203,14 @@ for (const [vaultLabel, [normal, sensitive]] of Object.entries(vaultDefs)) {
 // same exit code, same output, the same files with the same permissions, the same notes in them (transfer
 // files are encrypted with a fresh random nonce every time, so they are compared opened), and the same Drive
 // afterwards (compared by name, place, metadata and opened content - new files get random ids).
-if (!PART || PART === "export-import") {
+if (!PART || PART.startsWith("transfer:")) {
+    // Three parts: "transfer:export", "transfer:import", "transfer:import-errors" (see regression.parts.mjs).
+    const T_GROUPS = ["export", "import", "import-errors"], usedT = [];
+    const inT = (g) => {
+        if (!T_GROUPS.includes(g)) throw new Error(`part 'transfer:${g}' is not in tests/cli/regression.parts.mjs`);
+        usedT.push(g);
+        return !PART || PART === "transfer:" + g;
+    };
     const TRANSFER_REFERENCE = "2b77f16"; // main before '-m rotate'
     const ref2 = spawnSync("git", ["-C", ROOT, "show", `${TRANSFER_REFERENCE}:www/enotesmgr-export-cli.js`], { maxBuffer: 64 * 1024 * 1024 });
     if (ref2.status !== 0) { console.error(`Could not read the reference CLI from git (${TRANSFER_REFERENCE}). A full clone is needed.`); process.exit(1); }
@@ -252,6 +259,7 @@ if (!PART || PART === "export-import") {
     };
     const vx = buildVault("x-mixed", NORMAL, SENSITIVE), vn = buildVault("x-none", NORMAL, []), vs = buildVault("x-sens", [], SENSITIVE);
     const ME = `GOODTOKEN\n${MASTER}\n`;
+    if (inT("export")) {
     console.log("  -m export");
     for (const v of [vx, vn, vs]) sameT(`export, vault '${v.label}'`, ["-m", "export"], ME, { drive: v.drive });
     sameT("export, wrong master password", ["-m", "export"], "GOODTOKEN\nWrongPass9\n", { drive: vx.drive });
@@ -263,6 +271,9 @@ if (!PART || PART === "export-import") {
     sameT("export, config.json missing", ["-m", "export"], ME, { drive: vx.noconfig });
     sameT("export, a momentary Drive miss", ["-m", "export"], ME, { drive: vx.drive, env: { FAKE_HIDE_ONCE: "Config,config.json" } });
     sameT("export, Node 18", ["-m", "export"], ME, { drive: vx.drive, preload: [N18] });
+    }
+    const importing = [inT("import"), inT("import-errors")];
+    if (importing.some(Boolean)) {
     console.log("  -m import");
     // A transfer folder of vault x-mixed (made once), imported into account B (x-b: two notes, one of
     // whose names is taken by a note of x-mixed).
@@ -270,6 +281,7 @@ if (!PART || PART === "export-import") {
     const T = path.join(made.cwd, fs.readdirSync(made.cwd).find((d) => d.startsWith("eNotes Manager Transfer_")));
     const vb = buildVault("x-b", [["plain", "<div>B's own plain</div>"], ["only-b", "<div>B</div>"]], []);
     const IM = `${T}\n${MASTER}\nGOODTOKEN\n${MASTER}\ny\n`;
+    if (importing[0]) {
     sameT("import into another account (a name taken)", ["-m", "import"], IM, { drive: vb.drive });
     sameT("import, answer 'n'", ["-m", "import"], `${T}\n${MASTER}\nGOODTOKEN\n${MASTER}\nn\n`, { drive: vb.drive });
     sameT("import, just Enter at the question", ["-m", "import"], `${T}\n${MASTER}\nGOODTOKEN\n${MASTER}\n\n`, { drive: vb.drive });
@@ -277,6 +289,8 @@ if (!PART || PART === "export-import") {
     sameT("import again (every note already there)", ["-m", "import"], IM, { drive: once.drive });
     sameT("import into the account it came from", ["-m", "import"], IM, { drive: vx.drive });
     sameT("import, some notes refused by Drive", ["-m", "import"], IM, { drive: vb.drive, env: { FAKE_FAIL_CREATE: "rich,s-text" } });
+    }
+    if (importing[1]) {
     sameT("import, wrong OLD master password", ["-m", "import"], `${T}\nWrongPass9\nGOODTOKEN\n${MASTER}\ny\n`, { drive: vb.drive });
     sameT("import, wrong NEW master password", ["-m", "import"], `${T}\n${MASTER}\nGOODTOKEN\nWrongPass9\ny\n`, { drive: vb.drive });
     sameT("import, bad token", ["-m", "import"], `${T}\n${MASTER}\nBADTOKEN\n${MASTER}\ny\n`, { drive: vb.drive });
@@ -285,6 +299,9 @@ if (!PART || PART === "export-import") {
     sameT("import, a folder without transfer files", ["-m", "import"], `${junk}\n${MASTER}\nGOODTOKEN\n${MASTER}\ny\n`, { drive: vb.drive });
     sameT("import, other options given (ignored)", ["-m", "import", "-t", "BADTOKEN", "-x", "-c", "x"], IM, { drive: vb.drive });
     sameT("import, Node 18", ["-m", "import"], IM, { drive: vb.drive, preload: [N18] });
+    }
+    }
+    if (!PART && usedT.join() !== T_GROUPS.join()) throw new Error(`tests/cli/regression.parts.mjs must list exactly the transfer parts: ${usedT.join(", ")}`);
 }
 
 if (!PART && [...usedModes].join() !== MODES.join()) { console.error(`tests/cli/regression.parts.mjs must list exactly the modes: ${[...usedModes].join(", ")}`); process.exit(2); }

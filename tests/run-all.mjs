@@ -57,7 +57,8 @@ const BROWSER_SUITES = [
     { name: "media-parity", desc: "a sensitive note can do everything a normal note can" },
     { name: "new-user", desc: "a new user: setup and normal use identical to main (before sensitive notes)" },
     { name: "transfer", desc: "end to end: app account A -> -m export -> -m import -> app account B, notes identical" },
-    { name: "rotate", desc: "end to end: -m rotate on an app account - new file password, notes and settings identical, new codes" },
+    { name: "rotate", desc: "end to end: -m rotate on an app account (real pictures, clips, videos, PDF...) - new file password, notes and settings identical, new codes" },
+    { name: "lifecycle", desc: "everything together, every kind of note from real sample files: the app + -m on, -x + off, sensitive, export + import, rotate, by SHA-256" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
     { name: "settings", desc: "Settings can't be changed while they load from Drive; a late load is ignored" },
@@ -97,8 +98,11 @@ for (const s of ALL) {
 // first when several run at once - the whole run can't end before its slowest one. Measured with
 // 4 at once on a 4-core machine; only the order matters. Unlisted: 60.
 const EXPECTED_SECONDS = {
-    "cli-regression [export-import]": 276, "cli-rotate [failures]": 83, "cli-rotate [guards]": 72, "cli-rotate [full]": 53, "rotate": 47,
+    "cli-regression [transfer:import]": 110, "cli-regression [transfer:import-errors]": 100, "cli-regression [transfer:export]": 90, "cli-rotate [failures]": 83, "cli-rotate [guards]": 72, "cli-rotate [full]": 53,
     "cli-rotate [resume]": 43, "cli-rotate [settings-and-rest]": 27,
+    "lifecycle [uploads-media-sensitive]": 112, "lifecycle [rich-sensitive]": 106, "lifecycle [uploads-media]": 85, "lifecycle [mixed]": 80,
+    "lifecycle [uploads-files-sensitive]": 79, "lifecycle [rich]": 73, "lifecycle [uploads-files]": 65,
+    "rotate [uploads-media]": 98, "rotate [rich]": 95, "rotate [uploads-files]": 79,
     "cli-options [mixed:offline]": 79, "cli-transfer [import-errors]": 69,
     "cli-options [sensitive:offline]": 64, "cli-options [mixed:sensitive]": 58, "sensitive-notes": 57,
     "cli-matrix": 55, "cli-options [sensitive:sensitive]": 54, "transfer": 51, "cli-transfer [import]": 50,

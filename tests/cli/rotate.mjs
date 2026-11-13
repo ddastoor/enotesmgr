@@ -1,7 +1,8 @@
 // Export CLI '-m rotate': a NEW file password for the same account, nothing lost.
-// Account A (every kind of note: rich text, pictures, uploads, sensitive notes of every kind, odd / unicode
-// names, two notes with the same name, an empty one, one from before the metadata existed, unknown metadata
-// keys, 1 MB) with its own settings (incl. a key this test doesn't know) is rotated: the backup is A's data
+// Account A (every kind of note, from REAL sample files - tests/lib/media.cjs: rich text with text, pictures
+// and audio / video clips in every combination, every uploaded file type, a 1 MB file - each as a normal and
+// a sensitive note, odd / unicode names, two notes with the same name, an empty one, one from before the
+// metadata existed, unknown metadata keys) with its own settings (incl. a key this test doesn't know) is rotated: the backup is A's data
 // byte for byte, the saved notes and settings open with A's master password exactly, A's data is deleted
 // only after the typed confirmation, and after the "app" set the account up again (the fake Drive adds a
 // freshly set-up tree when the new token is used) every note is back EXACTLY (name, metadata incl. dates,
@@ -11,9 +12,10 @@
 // later, failures at every step, settings missing / unreadable, other options, Node 18, usage and help.
 // Usage: node tests/cli/rotate.mjs   (or via tests/run-all.mjs; ENOTES_TEST_PART runs one part)
 import { spawnSync } from "child_process";
-import fs from "fs"; import path from "path"; import os from "os";
+import fs from "fs"; import path from "path"; import os from "os"; import crypto from "crypto";
 import { fileURLToPath, pathToFileURL } from "url";
 import { PARTS } from "./rotate.parts.mjs";
+import M from "../lib/media.cjs";
 
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
@@ -41,29 +43,42 @@ const S = await imp("www/js/lib/sensitiveNote.js");
 const tryDec = (c, p) => { try { return C.decryptData(c, p); } catch { return null; } };
 
 // ---------------- account A, and the same account set up again ----------------
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-const GIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const BIG = Buffer.alloc(1024 * 1024); for (let i = 0; i < BIG.length; i++) BIG[i] = (i * 2654435761) >>> 24;
-const embed = (b64, mime) => `<span class="media-embed" contenteditable="false"><img src="data:${mime};base64,${b64}"></span>`;
 const meta = (created, modified, how, type, sensitive) => ({ DateTimeCreated: created, DateTimeModified: modified, CreationMethod: how, FileType: type, ...(sensitive ? { Sensitive: "yes" } : {}) });
 const sens = (content, pw) => S.wrapSensitive(C.encryptVerified(content, pw));
+// Every combination of note, from REAL sample files, stored exactly as the app stores them: rich text made
+// with 'New' (M.RICH: text only; text with pictures; text with audio clips; text, pictures and clips all mixed
+// up, a video among them; pictures only; clips only; pictures and clips; empty) and uploaded files (M.UPLOADS:
+// JPEG, PNG, GIF, WebP - a picture without an extension -, MP3, WAV, Ogg, M4A, MP4, WebM, PDF, a text file, a
+// web page, binary data; and a 1 MB file) - each as a normal AND a sensitive note - plus odd / unicode names,
+// two notes with the same name, a note from before the metadata existed and unknown metadata keys.
+const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const embed = (f) => `<span class="media-embed" contenteditable="false"><img src="${M.MEDIA[f].dataUrl}"></span> `;
+const audioEmbed = (f) => `<span class="media-embed" contenteditable="false"><audio controls="" src="${M.MEDIA[f].dataUrl}"></audio></span> `;
+const richHtml = (body) => body.map((p) => (p.text !== undefined ? p.text.split("\n").map((x) => `<div>${esc(x)}</div>`).join("") : p.image ? embed(p.image) : audioEmbed(p.audio))).join("");
+// The FileType the app records for an upload (detected from its content).
+const fileTypeOf = (f) => { const m = M.MEDIA[f]; return ["image", "audio"].includes(m.type) ? m.type : m.type === "video" || m.type === "pdf" ? m.mime : "UNKNOWN"; };
+// [name, stored content, FileType, CreationMethod, the sample files it holds in order]
+const KINDS = [
+    ...M.RICH.map((r) => [r.name, richHtml(r.body) + (r.name === "text" ? "<div>&lt;tag&gt; &amp; PIN-1111</div><div><br></div>" : ""), "richtext", "new", M.mediaOf(r.body)]),
+    ...M.UPLOADS.map((u) => [u.name, `data:${u.mime || "application/octet-stream"};base64,${M.MEDIA[u.file].b64}`, fileTypeOf(u.file), "upload", [u.file]]),
+    ["big.bin", `data:application/octet-stream;base64,${BIG.toString("base64")}`, "UNKNOWN", "upload", []],
+];
+// Which sample files each note holds, in order, and the note password of a sensitive one.
+const SAMPLES = Object.fromEntries(KINDS.flatMap(([name, , , , files], i) => [[name, { files }], [`s-${name}`, { files, pw: `NotePass${i}x` }]]));
 // [name, stored content (after the file-password layer), appProperties]
 const NOTES = [
-    ["plain-text", "<div>Plain PIN-1111 café ✓ &lt;tag&gt;</div>", meta("2024-03-01T09:15", "2025-07-04T18:30", "new", "richtext")],
-    ["rich", `<div><b>Bold</b></div>${embed(PNG, "image/png")} ${embed(GIF, "image/gif")}`, meta("2024-03-02T10:00", "2024-03-02T10:05", "new", "richtext")],
-    ["photo.png", `data:image/png;base64,${PNG}`, meta("2024-04-01T08:00", "2024-04-01T08:00", "upload", "image")],
-    ["scan", `data:application/octet-stream;base64,${PNG}`, meta("2024-04-02T08:00", "2024-04-02T08:00", "upload", "image")],
-    ["big.bin", `data:application/octet-stream;base64,${BIG.toString("base64")}`, meta("2024-04-05T08:00", "2024-04-05T08:00", "upload", "UNKNOWN")],
-    ["a:b*c? ✓", "<div>odd name</div>", meta("2024-05-01T00:00", "2024-05-01T00:00", "new", "richtext")],
-    ["empty", "", meta("2024-05-02T00:00", "2024-05-02T00:00", "new", "richtext")],
+    ...KINDS.map(([name, content, type, how], i) => [name, content, meta(`2024-03-${String(i + 1).padStart(2, "0")}T09:15`, `2025-07-${String(i + 1).padStart(2, "0")}T18:30`, how, type)]),
+    ...KINDS.map(([name, content, type, how], i) => [`s-${name}`, sens(content, `NotePass${i}x`), meta(`2024-05-${String(i + 1).padStart(2, "0")}T08:00`, `2025-08-${String(i + 1).padStart(2, "0")}T08:00`, how, type, true)]),
+    ["a:b*c? ✓", "<div>odd name</div>", meta("2024-06-01T00:00", "2024-06-01T00:00", "new", "richtext")],
     ["legacy", "[metadata begin]\nDateTimeCreated=2020-01-01T00:00\nCreationMethod=new\nFileType=richtext\n[metadata end]\n<div>from an old version</div>", null],
-    ["dup", "<div>first dup</div>", meta("2024-06-01T00:00", "2024-06-01T00:00", "new", "richtext")],
-    ["dup", "<div>second dup</div>", meta("2024-06-02T00:00", "2024-06-02T00:00", "new", "richtext")],
-    ["s-text", sens("<div>SECRET-1 PIN-2222</div>", "SecretText1"), meta("2024-07-01T00:00", "2024-07-09T00:00", "new", "richtext", true)],
-    ["s-photo.png", sens(`data:image/png;base64,${PNG}`, "SecretPhoto2"), meta("2024-07-02T00:00", "2024-07-02T00:00", "upload", "image", true)],
-    ["s:odd?", sens("<div>SECRET-4</div>", "SecretOdd44"), meta("2024-07-04T00:00", "2024-07-04T00:00", "new", "richtext", true)],
+    ["dup", "<div>first dup</div>", meta("2024-06-02T00:00", "2024-06-02T00:00", "new", "richtext")],
+    ["dup", "<div>second dup</div>", meta("2024-06-03T00:00", "2024-06-03T00:00", "new", "richtext")],
     ["future", "<div>has extra metadata</div>", { ...meta("2024-09-01T00:00", "2024-09-02T00:00", "new", "richtext"), FutureKey: "kept ✓", Another: "" }],
 ];
+// A smaller set, for the guards and failures (they test the steps, not the kinds of note).
+const SOME = NOTES.filter(([name]) => ["text", "s-text+pictures+audio", "photo.jpg", "s-doc.pdf", "notes.txt", "dup"].includes(name));
+const sha = (x) => crypto.createHash("sha256").update(x).digest("hex");
 const SETTINGS = { session_timeout_seconds: 900, app_theme: "Dark", extra_setting: "kept ✓" };
 const SETTINGS_META = { DateTimeCreated: "2024-01-01T00:00", DateTimeModified: "2025-02-02T00:00", CreationMethod: "app", FileType: "settings" };
 const MASTER = "MasterA123", FP = "aaaaaaaa-1111-4ccc-8ddd-aaaaaaaaaaaa";
@@ -81,7 +96,7 @@ function vault(prefix, notes, { settings = SETTINGS, settingsKey = FP, extra = n
     for (let i = 1; i <= 3; i++) add(`recovery-${prefix}${i}`, rec, C.encryptData(JSON.stringify({ file_password: FP }), `123456781234567${i}`), false, meta("2024-01-01T00:00", "2024-01-01T00:00", "app", "recovery"));
     for (const [name, content, ap] of notes) add(name, ent, C.encryptData(content, FP), false, ap);
     if (extra) extra({ add, mgr, cfg, ent, rec });
-    return { tree: t, entries: ent, config: cfg };
+    return { tree: t, entries: ent, config: cfg, notes };
 }
 // The same account, set up again in the app: a new config.json (new file password), the default settings,
 // new recovery codes, no notes.
@@ -98,6 +113,7 @@ const SETUP = (() => {
 })();
 const writeJson = (file, obj) => { fs.writeFileSync(file, JSON.stringify(obj)); return file; };
 const A = vault("a", NOTES);
+const AS = vault("s", SOME);
 const setupFile = writeJson(path.join(HERE, "setup.json"), SETUP);
 // A fresh copy of a fake Drive, for one scenario (all its runs use and change it).
 const driveCopy = (tree) => writeJson(path.join(fs.mkdtempSync(path.join(HERE, "drive-")), "drive.json"), tree);
@@ -122,7 +138,7 @@ const isPrivate = (p) => process.platform === "win32" || fs.readdirSync(p, { rec
 const kidsOf = (tree, parent) => tree.filter((f) => f.parents.includes(parent));
 
 // Everything a finished rotation must have done. notes / settings: what account A had.
-function checkRotated(label, r, driveFile, cwd, { notes = NOTES, settings = SETTINGS, before = A.tree } = {}) {
+function checkRotated(label, r, driveFile, cwd, { vault: v = A, notes = v.notes, settings = SETTINGS, before = v.tree } = {}) {
     const after = readDrive(driveFile);
     const [rot] = rotationIn(cwd);
     ok(r.code === 0 && r.out.includes(`Rotation finished for ${EMAIL}`) && rot, `${label}: exit 0, 'Rotation finished'` + (r.code === 0 ? "" : `: ${r.out.slice(-700)}`));
@@ -162,7 +178,26 @@ function checkRotated(label, r, driveFile, cwd, { notes = NOTES, settings = SETT
         if (f) exact++;
     }
     ok(entries.length === notes.length && exact === notes.length, `${label}: every note is back EXACTLY - same name, metadata incl. dates, content (${exact}/${notes.length})`);
+    // The same, as fingerprints: name + metadata + SHA-256 of the content, of every note before and after.
+    const prints = (list) => list.map((x) => `${x[0]} | ${JSON.stringify(x[2])} | ${sha(x[1])}`).sort();
+    const beforeP = prints(notes), afterP = prints(entries.map((f) => [f.name, tryDec(f.content, NEW_FP) || "", f.appProperties || null]));
+    const savedP = prints(recs.filter(Boolean).map((x) => [x.name, x.content, x.appProperties]));
+    ok(JSON.stringify(afterP) === JSON.stringify(beforeP) && JSON.stringify(savedP) === JSON.stringify(beforeP),
+        `${label}: SHA-256 of every note's content (with its name and metadata): the same before, in the saved copy and after - ${beforeP.length} notes`);
     ok(entries.every((f) => tryDec(f.content, FP) === null && tryDec(f.content, NEW_FP) !== null), `${label}: every note opens with the NEW file password, none with the old one`);
+    // Every sample file inside every note (a sensitive one opened with its note password) is byte for byte the
+    // original - by SHA-256, in order.
+    let samples = 0; const off = [];
+    const withSamples = notes.filter(([n]) => SAMPLES[n] && SAMPLES[n].files.length);
+    const wantSamples = withSamples.reduce((k, [n]) => k + SAMPLES[n].files.length, 0);
+    for (const [name] of withSamples) {
+        const f = entries.find((x) => x.name === name), sm = SAMPLES[name];
+        let text = f ? tryDec(f.content, NEW_FP) : null;
+        if (text !== null && sm.pw) text = tryDec(S.unwrapSensitive(text), sm.pw);
+        const found = text === null ? [] : [...text.matchAll(/data:[^;"]*;base64,([A-Za-z0-9+/=]+)/g)].map((m) => M.whichBytes(Buffer.from(m[1], "base64")));
+        if (JSON.stringify(found) === JSON.stringify(sm.files)) samples += found.length; else off.push(`${name}: ${found.join(", ")} (want ${sm.files.join(", ")})`);
+    }
+    ok(off.length === 0 && samples === wantSamples, `${label}: every picture, clip and file in every note (sensitive ones opened with their note password) is byte for byte its original sample, in order (SHA-256) - ${samples} samples` + (off.length ? `\n      ${off.join("\n      ")}` : ""));
     ok(entries.every((f) => JSON.stringify(Object.keys(f).filter((k) => k !== "appProperties").sort()) === '["content","id","mimeType","name","parents"]' && f.mimeType === "text/plain"),
         `${label}: each note's Drive record is what the app makes (a text/plain file in Entries)`);
     const sj = after.find((f) => f.id === "n6");
@@ -188,7 +223,7 @@ if (inPart("full")) {
     checkRotated("rotation", r, drive, r.cwd);
     ok(r.out.split("(hidden): ").length - 1 === 4 && r.out.includes(`type exactly: ${WIPE}`), "asks: token, master password, the typed confirmation, the new token and the new master password");
     ok(["1. Backing up", "2. Saving every note and your settings", "3. Checking", "Every note and the settings opens again", "Deleted.", "set eNotesMgr up", "Copy Export Token",
-        "Putting your 14 note(s) back", "settings put back", "Checking every note in Google Drive", "its file password is NEW", "old codes no longer work"].every((x) => r.out.includes(x)),
+        `Putting your ${NOTES.length} note(s) back`, "settings put back", "Checking every note in Google Drive", "its file password is NEW", "old codes no longer work"].every((x) => r.out.includes(x)),
         "says what it does at every step, and what it did");
     ok(r.out.indexOf("3. Checking") < r.out.indexOf("type exactly") && r.out.indexOf("type exactly") < r.out.indexOf("Deleted."), "the deletion comes only after the check and the confirmation");
     // The transfer folder is a normal one: -m import takes it.
@@ -197,16 +232,16 @@ if (inPart("full")) {
     const im = run(["-m", "import"], `${path.join(rot, "transfer")}\n${MASTER}\nGOODTOKEN\n${NEW_MASTER}\ny\n`, { drive: other });
     ok(im.code === 0 && im.out.includes(`Imported ${NOTES.length} of ${NOTES.length} note(s)`), "its transfer/ folder is a normal transfer folder: '-m import' adds every note from it");
     console.log("   ... on Node 18");
-    const d18 = driveCopy(A.tree);
+    const d18 = driveCopy(AS.tree);
     const r18 = run(["-m", "rotate"], ALL_THE_WAY, { drive: d18, preload: [N18] });
-    checkRotated("on Node 18", r18, d18, r18.cwd);
+    checkRotated("on Node 18", r18, d18, r18.cwd, { vault: AS });
 }
 
 if (inPart("guards")) {
     console.log("\n2. Nothing is deleted unless everything is saved and checked and confirmed");
-    const untouched = (file, tree = A.tree) => JSON.stringify(readDrive(file)) === JSON.stringify(tree);
+    const untouched = (file, tree = AS.tree) => JSON.stringify(readDrive(file)) === JSON.stringify(tree);
     for (const [label, answer] of [["a wrong confirmation", `wipe ${EMAIL}`], ["just Enter", ""], ["another e-mail", "WIPE someone@gmail.com"]]) {
-        const drive = driveCopy(A.tree);
+        const drive = driveCopy(AS.tree);
         const r = run(["-m", "rotate"], `GOODTOKEN\n${MASTER}\n${answer}\n`, { drive });
         const [rot] = rotationIn(r.cwd);
         ok(r.code === 0 && r.out.includes("Stopped: nothing was deleted") && untouched(drive) && rot && stateOf(rot).phase === "cancelled" && !r.out.includes("Deleted."),
@@ -215,7 +250,7 @@ if (inPart("guards")) {
     const noFolder = (r) => fs.readdirSync(r.cwd).length === 0;
     for (const [label, input, want] of [["wrong master password", `GOODTOKEN\nWrongPass9\n${WIPE}\n`, "Could not decrypt config.json"],
         ["bad token", `BADTOKEN\n${MASTER}\n${WIPE}\n`, "rejected the export token"], ["empty token", "\n", "needs an export token"], ["no input at all", "", "needs an export token"]]) {
-        const drive = driveCopy(A.tree);
+        const drive = driveCopy(AS.tree);
         const r = run(["-m", "rotate"], input, { drive });
         ok(r.code === 1 && r.out.includes(want) && r.out.includes("Rotation failed") && untouched(drive) && noFolder(r), `${label}: clear error, nothing written, Drive untouched`);
     }
@@ -223,10 +258,10 @@ if (inPart("guards")) {
     let r = run(["-m", "rotate"], ALL_THE_WAY, { drive });
     ok(r.code === 1 && r.out.includes("has no eNotesMgr data yet") && r.out.includes("eNotes Manager Rotation_<date>") && noFolder(r), "an account without eNotesMgr data: says so (and where a stopped rotation is continued), nothing written");
     // A note that can't be read: it couldn't be saved, so nothing is deleted.
-    const bad = vault("c", NOTES); bad.tree.find((f) => f.name === "rich").content = "bm90IGEgbm90ZQ==";
+    const bad = vault("c", SOME); bad.tree.find((f) => f.name === "photo.jpg").content = "bm90IGEgbm90ZQ==";
     drive = driveCopy(bad.tree);
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive });
-    ok(r.code === 1 && r.out.includes("1 note(s) could not be read (rich)") && r.out.includes("Nothing was deleted") && untouched(drive, bad.tree) && stateOf(rotationIn(r.cwd)[0]).phase === "stopped" && !r.out.includes("type exactly"),
+    ok(r.code === 1 && r.out.includes("1 note(s) could not be read (photo.jpg)") && r.out.includes("Nothing was deleted") && untouched(drive, bad.tree) && stateOf(rotationIn(r.cwd)[0]).phase === "stopped" && !r.out.includes("type exactly"),
         "a damaged note in Drive: it can't be saved, so the rotation stops before asking - nothing deleted");
     // Data the rotation would not carry over.
     for (const [label, extra, want] of [
@@ -240,22 +275,22 @@ if (inPart("guards")) {
         ok(r.code === 1 && r.out.includes(want) && r.out.includes("Nothing was done") && untouched(drive, v.tree) && noFolder(r), `${label}: data the rotation would not carry over - it stops before doing anything`);
     }
     // An EMPTY 2nd 'eNotes Manager' folder (a Drive glitch leftover) is deleted too, so the app sets up afresh.
-    const withEmpty = vault("e", NOTES.slice(0, 4), { extra: ({ add }) => add("Entries", add("eNotes Manager", "appDataFolder", "", true), "", true) });
+    const withEmpty = vault("e", SOME, { extra: ({ add }) => add("Entries", add("eNotes Manager", "appDataFolder", "", true), "", true) });
     drive = driveCopy(withEmpty.tree);
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive });
-    checkRotated("with an empty 2nd 'eNotes Manager' folder", r, drive, r.cwd, { notes: NOTES.slice(0, 4), before: withEmpty.tree });
+    checkRotated("with an empty 2nd 'eNotes Manager' folder", r, drive, r.cwd, { vault: withEmpty });
     ok(readDrive(drive).filter((f) => f.name === "eNotes Manager").length === 1, "  ... and that empty leftover folder is deleted too (only the new set-up remains)");
     // Same minute: a rotation folder of this minute is already here.
     const cwd = fs.mkdtempSync(path.join(HERE, "same-"));
     fs.mkdirSync(path.join(cwd, "eNotes Manager Rotation_20260304_0506"));
-    drive = driveCopy(A.tree);
+    drive = driveCopy(AS.tree);
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive, cwd, preload: [FN], env: { FAKE_NOW: "2026-03-04T05:06:30" } });
     ok(r.code === 1 && r.out.includes("already exists here") && !r.out.includes("Paste the export token") && untouched(drive) && fs.readdirSync(cwd).length === 1,
         "a rotation folder of the same minute already here: stops before asking anything");
     // Every other option is ignored.
-    drive = driveCopy(A.tree);
+    drive = driveCopy(AS.tree);
     r = run(["-m", "rotate", "-t", "BADTOKEN", "-x", "-c", "x", "-d", "y", "-n", "z", "-s", "q"], ALL_THE_WAY, { drive });
-    checkRotated("with every other option given", r, drive, r.cwd);
+    checkRotated("with every other option given", r, drive, r.cwd, { vault: AS });
 }
 
 if (inPart("resume")) {
@@ -279,11 +314,11 @@ if (inPart("resume")) {
         "a token of ANOTHER account: refused (asks again), nothing put there");
     r = run(["-m", "rotate"], `\n${MASTER}\nNEWTOKEN\n${NEW_MASTER}\n`, { drive, cwd });
     checkRotated("finished later (Enter = continue)", r, drive, cwd);
-    ok(r.out.includes("Continuing the rotation of " + EMAIL) && r.out.includes("14 note(s) and your settings are ready to be put back"), "  ... it continued the stopped rotation");
+    ok(r.out.includes("Continuing the rotation of " + EMAIL) && r.out.includes(`${NOTES.length} note(s) and your settings are ready to be put back`), "  ... it continued the stopped rotation");
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive: driveCopy(SETUP), cwd });
     ok(!r.out.includes("Continue it?"), "a finished rotation is not offered again");
     // The saved notes damaged after the deletion: refused - the backup is untouched.
-    const d2 = driveCopy(A.tree), cwd2 = fs.mkdtempSync(path.join(HERE, "resume2-"));
+    const d2 = driveCopy(AS.tree), cwd2 = fs.mkdtempSync(path.join(HERE, "resume2-"));
     run(["-m", "rotate"], `GOODTOKEN\n${MASTER}\n${WIPE}\n`, { drive: d2, cwd: cwd2 });
     const [rot2] = rotationIn(cwd2);
     fs.rmSync(path.join(rot2, "transfer", "note-0003.enotes"));
@@ -294,46 +329,46 @@ if (inPart("resume")) {
 if (inPart("failures")) {
     console.log("\n4. Failures along the way");
     // The deletion fails: everything is still in Drive.
-    let drive = driveCopy(A.tree), cwd = fs.mkdtempSync(path.join(HERE, "fail-"));
+    let drive = driveCopy(AS.tree), cwd = fs.mkdtempSync(path.join(HERE, "fail-"));
     let r = run(["-m", "rotate"], ALL_THE_WAY, { drive, cwd, env: { FAKE_FAIL_DELETE: "1" } });
     const [rot] = rotationIn(cwd);
-    ok(r.code === 1 && r.out.includes("could not delete the data") && r.out.includes("Your notes are safe") && JSON.stringify(readDrive(drive)) === JSON.stringify(A.tree) && stateOf(rot).phase === "wiping",
+    ok(r.code === 1 && r.out.includes("could not delete the data") && r.out.includes("Your notes are safe") && JSON.stringify(readDrive(drive)) === JSON.stringify(AS.tree) && stateOf(rot).phase === "wiping",
         "the deletion fails: clear error, all data still in Drive");
     r = run(["-m", "rotate"], `\n${MASTER}\nGOODTOKEN\n${WIPE}\nNEWTOKEN\n${NEW_MASTER}\n`, { drive, cwd });
     ok(r.out.includes("still has its OLD eNotesMgr data") && r.out.includes("the deletion did not happen"), "run again: sees the old data is still there, asks to confirm the deletion again");
-    checkRotated("after a failed deletion", r, drive, cwd);
+    checkRotated("after a failed deletion", r, drive, cwd, { vault: AS });
     // Putting the notes back fails for some: run again adds just those.
-    drive = driveCopy(A.tree); cwd = fs.mkdtempSync(path.join(HERE, "fail2-"));
-    r = run(["-m", "rotate"], ALL_THE_WAY, { drive, cwd, env: { FAKE_FAIL_CREATE: "rich,s-text" } });
-    ok(r.code === 1 && r.out.includes("2 note(s) could not be put back: rich, s-text") && r.out.includes("NOT finished") && stateOf(rotationIn(cwd)[0]).phase === "wiped" &&
-        readDrive(drive).filter((f) => f.parents.includes("n3")).length === NOTES.length - 2, "2 notes can't be put back: stops (the others are back), says how to finish");
+    drive = driveCopy(AS.tree); cwd = fs.mkdtempSync(path.join(HERE, "fail2-"));
+    r = run(["-m", "rotate"], ALL_THE_WAY, { drive, cwd, env: { FAKE_FAIL_CREATE: "photo.jpg,s-doc.pdf" } });
+    ok(r.code === 1 && r.out.includes("2 note(s) could not be put back: photo.jpg, s-doc.pdf") && r.out.includes("NOT finished") && stateOf(rotationIn(cwd)[0]).phase === "wiped" &&
+        readDrive(drive).filter((f) => f.parents.includes("n3")).length === SOME.length - 2, "2 notes can't be put back: stops (the others are back), says how to finish");
     r = run(["-m", "rotate"], `\n${MASTER}\nNEWTOKEN\n${NEW_MASTER}\n`, { drive, cwd });
-    ok(r.out.includes(`2 note(s) to add, ${NOTES.length - 2} already there`), "run again: adds just the 2 missing notes - nothing twice");
-    checkRotated("after failed notes", r, drive, cwd);
+    ok(r.out.includes(`2 note(s) to add, ${SOME.length - 2} already there`), "run again: adds just the 2 missing notes - nothing twice");
+    checkRotated("after failed notes", r, drive, cwd, { vault: AS });
     // Saving the settings fails.
-    drive = driveCopy(A.tree); cwd = fs.mkdtempSync(path.join(HERE, "fail3-"));
+    drive = driveCopy(AS.tree); cwd = fs.mkdtempSync(path.join(HERE, "fail3-"));
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive, cwd, env: { FAKE_FAIL_UPDATE: "1" } });
     ok(r.code === 1 && r.out.includes("the settings could not be saved") && stateOf(rotationIn(cwd)[0]).phase === "wiped", "the settings can't be saved: stops, says how to finish");
     r = run(["-m", "rotate"], `\n${MASTER}\nNEWTOKEN\n${NEW_MASTER}\n`, { drive, cwd });
-    checkRotated("after failed settings", r, drive, cwd);
+    checkRotated("after failed settings", r, drive, cwd, { vault: AS });
 }
 
 if (inPart("settings-and-rest")) {
     console.log("\n5. Settings missing or unreadable; no notes; usage and help");
-    let v = vault("f", NOTES.slice(0, 5), { settings: null });
+    let v = vault("f", SOME, { settings: null });
     let drive = driveCopy(v.tree);
     let r = run(["-m", "rotate"], ALL_THE_WAY, { drive });
     ok(r.out.includes("this account has no saved settings") && !fs.existsSync(path.join(rotationIn(r.cwd)[0], "settings.enotes-settings")), "no settings.json: says so, nothing saved for them");
-    checkRotated("without settings", r, drive, r.cwd, { notes: NOTES.slice(0, 5), settings: null, before: v.tree });
-    v = vault("g", NOTES.slice(0, 5), { settingsKey: "another-key" });
+    checkRotated("without settings", r, drive, r.cwd, { vault: v, settings: null });
+    v = vault("g", SOME, { settingsKey: "another-key" });
     drive = driveCopy(v.tree);
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive });
     ok(r.out.includes("the saved settings could not be read"), "settings.json that doesn't open: says so, the rotation goes on");
-    checkRotated("with unreadable settings", r, drive, r.cwd, { notes: NOTES.slice(0, 5), settings: null, before: v.tree });
+    checkRotated("with unreadable settings", r, drive, r.cwd, { vault: v, settings: null });
     v = vault("h", []);
     drive = driveCopy(v.tree);
     r = run(["-m", "rotate"], ALL_THE_WAY, { drive });
-    checkRotated("an account with no notes", r, drive, r.cwd, { notes: [], before: v.tree });
+    checkRotated("an account with no notes", r, drive, r.cwd, { vault: v });
     for (const [label, args] of [["-m bogus", ["-m", "bogus"]], ["no -m", []]]) {
         const u = run(args, "");
         ok(u.code === 1 && u.out.includes("'on', 'off', 'sensitive', 'export', 'import' or 'rotate'") && u.out.includes("-m rotate"), `${label}: the usage lists -m rotate`);

@@ -58,7 +58,7 @@ the owner says so.
     the app files unchanged: `verify`, `cli`, `sensitive`,
     `cli-options`, `cli-transfer`, `cli-regression`, `cli-rotate`, and the
     browser suites that run the CLI: `cli-roundtrip`, `cli-matrix`,
-    `sensitive-notes`, `transfer`, `rotate`.
+    `sensitive-notes`, `transfer`, `rotate`, `lifecycle`.
   - Code shared by the app AND the CLI (`www/js/crypto/`,
     `www/js/lib/noteExport.js`, `www/js/lib/sensitiveNote.js`,
     `www/js/lib/meta.js`): the full suite.
