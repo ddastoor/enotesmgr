@@ -340,7 +340,7 @@ if (inPart("rest")) {
     console.log("\n6. Usage");
     for (const [label, args] of [["-m bogus", ["-m", "bogus"]], ["no -m", []]]) {
         const u = run(args, "");
-        ok(u.code === 1 && u.out.includes("'on', 'off', 'sensitive', 'export' or 'import'") && u.out.includes("-m export") && u.out.includes("-m import"), `${label}: the usage lists -m export / -m import`);
+        ok(u.code === 1 && u.out.includes("'on', 'off', 'sensitive', 'export', 'import' or 'rotate'") && u.out.includes("-m export") && u.out.includes("-m import"), `${label}: the usage lists -m export / -m import`);
     }
     const help = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" }).stdout;
     ok(["-m export", "-m import", "eNotes Manager Transfer_<date>", "master password of the OLD", "already there", "Move all your notes to another account"].every((x) => help.includes(x)), "--help documents -m export / -m import");

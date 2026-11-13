@@ -42,6 +42,7 @@ const NODE_SUITES = [
     { name: "cli-options", desc: "export CLI: every option combination x vaults with / without sensitive notes", args: [path.join(TESTS, "cli/options.mjs")] },
     { name: "cli-transfer", desc: "export CLI: -m export / -m import (moving notes to another account)", args: [path.join(TESTS, "cli/transfer.mjs")] },
     { name: "cli-regression", desc: "export CLI: the existing modes behave exactly as before -m export / -m import", args: [path.join(TESTS, "cli/regression.mjs")] },
+    { name: "cli-rotate", desc: "export CLI: -m rotate - a new file password for the same account, nothing lost", args: [path.join(TESTS, "cli/rotate.mjs")] },
 ];
 const BROWSER_SUITES = [
     { name: "app-core", desc: "setup, unlock, notes, recovery, timeout, CSP, popup" },
@@ -56,6 +57,7 @@ const BROWSER_SUITES = [
     { name: "media-parity", desc: "a sensitive note can do everything a normal note can" },
     { name: "new-user", desc: "a new user: setup and normal use identical to main (before sensitive notes)" },
     { name: "transfer", desc: "end to end: app account A -> -m export -> -m import -> app account B, notes identical" },
+    { name: "rotate", desc: "end to end: -m rotate on an app account - new file password, notes and settings identical, new codes" },
     { name: "google-signin", desc: "real Google sign-in script works under the CSP (needs internet)" },
     { name: "fonts", desc: "self-hosted font: no Google Fonts, untampered, looks identical" },
     { name: "settings", desc: "Settings can't be changed while they load from Drive; a late load is ignored" },
@@ -95,6 +97,8 @@ for (const s of ALL) {
 // first when several run at once - the whole run can't end before its slowest one. Measured with
 // 4 at once on a 4-core machine; only the order matters. Unlisted: 60.
 const EXPECTED_SECONDS = {
+    "cli-regression [export-import]": 276, "cli-rotate [failures]": 83, "cli-rotate [guards]": 72, "cli-rotate [full]": 53, "rotate": 47,
+    "cli-rotate [resume]": 43, "cli-rotate [settings-and-rest]": 27,
     "cli-options [mixed:offline]": 79, "cli-transfer [import-errors]": 69,
     "cli-options [sensitive:offline]": 64, "cli-options [mixed:sensitive]": 58, "sensitive-notes": 57,
     "cli-matrix": 55, "cli-options [sensitive:sensitive]": 54, "transfer": 51, "cli-transfer [import]": 50,

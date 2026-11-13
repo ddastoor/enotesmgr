@@ -198,6 +198,95 @@ for (const [vaultLabel, [normal, sensitive]] of Object.entries(vaultDefs)) {
     }
 }
 
+// '-m export' and '-m import' were moved into code they now share with '-m rotate'. They must behave EXACTLY
+// as the CLI on main before '-m rotate' (TRANSFER_REFERENCE): both run side by side with identical inputs -
+// same exit code, same output, the same files with the same permissions, the same notes in them (transfer
+// files are encrypted with a fresh random nonce every time, so they are compared opened), and the same Drive
+// afterwards (compared by name, place, metadata and opened content - new files get random ids).
+if (!PART || PART === "export-import") {
+    const TRANSFER_REFERENCE = "2b77f16"; // main before '-m rotate'
+    const ref2 = spawnSync("git", ["-C", ROOT, "show", `${TRANSFER_REFERENCE}:www/enotesmgr-export-cli.js`], { maxBuffer: 64 * 1024 * 1024 });
+    if (ref2.status !== 0) { console.error(`Could not read the reference CLI from git (${TRANSFER_REFERENCE}). A full clone is needed.`); process.exit(1); }
+    const OLDCLI2 = path.join(HERE, "transfer-reference-cli.js");
+    fs.writeFileSync(OLDCLI2, ref2.stdout);
+    console.log(`\n=== -m export / -m import: exactly as the CLI on main before -m rotate (${TRANSFER_REFERENCE}) ===`);
+    const tryOpen = (c, pw) => { try { return C.decryptData(c, pw); } catch { return null; } };
+    const runX = (cli, args, input, { drive = null, env = {}, preload = [] } = {}) => {
+        const cwd = fs.mkdtempSync(path.join(HERE, "x-"));
+        const copy = drive ? path.join(fs.mkdtempSync(path.join(HERE, "xd-")), "drive.json") : "";
+        if (drive) fs.copyFileSync(drive, copy);
+        const pre = [...preload, ...(drive ? [FF] : [])].flatMap((p) => ["-r", p]);
+        const r = spawnSync(process.execPath, [...pre, cli, ...args], { cwd, input, encoding: "utf8", env: { ...process.env, FAKE_DRIVE: copy, ...env } });
+        const norm = (t) => (t || "").replaceAll(cwd, "<cwd>").replace(/_\d{8}_\d{4}/g, "_<stamp>");
+        return { code: r.status, out: norm(r.stdout) + "\n--stderr--\n" + norm(r.stderr), cwd, drive: copy };
+    };
+    // Every file the run wrote: its path, permissions and - for a transfer file - the note in it, opened.
+    const filesView = (cwd) => {
+        const out = {};
+        const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+            const p = path.join(d, e.name), rel = path.relative(cwd, p).replace(/_\d{8}_\d{4}/g, "_<stamp>");
+            const mode = (fs.statSync(p).mode & 0o777).toString(8);
+            if (e.isDirectory()) { out[rel + "/"] = mode; walk(p); return; }
+            const text = fs.readFileSync(p, "utf8");
+            out[rel] = mode + " " + (text.startsWith("eNotesMgr transfer v1\n") ? tryOpen(text.slice(22).trim(), MASTER) : crypto.createHash("sha256").update(text).digest("hex"));
+        });
+        walk(cwd);
+        return JSON.stringify(out);
+    };
+    // The Drive: every item by its place, name, type, metadata and opened content (ids left out).
+    const driveView = (file) => {
+        if (!file) return "";
+        const items = JSON.parse(fs.readFileSync(file, "utf8"));
+        const byId = new Map(items.map((f) => [f.id, f]));
+        const place = (f) => { const p = byId.get(f.parents[0]); return (p ? place(p) + "/" : "") + f.name; };
+        return JSON.stringify(items.map((f) => ({ at: place(f), mime: f.mimeType, ap: f.appProperties || null,
+            content: f.mimeType === "text/plain" ? (tryOpen(f.content, FP) ?? tryOpen(f.content, MASTER) ?? "RAW " + f.content) : "" })).map((x) => JSON.stringify(x)).sort());
+    };
+    const sameT = (label, args, input, opts = {}) => {
+        const a = runX(OLDCLI2, args, input, opts), b = runX(NEWCLI, args, input, opts);
+        const okCode = a.code === b.code, okOut = a.out === b.out, okFiles = filesView(a.cwd) === filesView(b.cwd), okDrive = driveView(a.drive) === driveView(b.drive);
+        ok(okCode && okOut && okFiles && okDrive, `${label}: same exit (${b.code}), same output, same files and notes, same Drive` +
+            (okCode ? "" : ` | exit ${a.code} vs ${b.code}`) + (okOut ? "" : ` | output differs:\n---before---\n${a.out.slice(-700)}\n---now---\n${b.out.slice(-700)}`) +
+            (okFiles ? "" : " | files differ") + (okDrive ? "" : " | Drive differs"));
+        return b;
+    };
+    const vx = buildVault("x-mixed", NORMAL, SENSITIVE), vn = buildVault("x-none", NORMAL, []), vs = buildVault("x-sens", [], SENSITIVE);
+    const ME = `GOODTOKEN\n${MASTER}\n`;
+    console.log("  -m export");
+    for (const v of [vx, vn, vs]) sameT(`export, vault '${v.label}'`, ["-m", "export"], ME, { drive: v.drive });
+    sameT("export, wrong master password", ["-m", "export"], "GOODTOKEN\nWrongPass9\n", { drive: vx.drive });
+    sameT("export, bad token", ["-m", "export"], `BADTOKEN\n${MASTER}\n`, { drive: vx.drive });
+    sameT("export, empty token", ["-m", "export"], "\n", { drive: vx.drive });
+    sameT("export, no input at all", ["-m", "export"], "", { drive: vx.drive });
+    sameT("export, other options given (ignored)", ["-m", "export", "-t", "BADTOKEN", "-x", "-c", "x", "-d", "y", "-n", "z", "-s", "q"], ME, { drive: vx.drive });
+    sameT("export, duplicate data", ["-m", "export"], ME, { drive: vx.dups });
+    sameT("export, config.json missing", ["-m", "export"], ME, { drive: vx.noconfig });
+    sameT("export, a momentary Drive miss", ["-m", "export"], ME, { drive: vx.drive, env: { FAKE_HIDE_ONCE: "Config,config.json" } });
+    sameT("export, Node 18", ["-m", "export"], ME, { drive: vx.drive, preload: [N18] });
+    console.log("  -m import");
+    // A transfer folder of vault x-mixed (made once), imported into account B (x-b: two notes, one of
+    // whose names is taken by a note of x-mixed).
+    const made = runX(NEWCLI, ["-m", "export"], ME, { drive: vx.drive });
+    const T = path.join(made.cwd, fs.readdirSync(made.cwd).find((d) => d.startsWith("eNotes Manager Transfer_")));
+    const vb = buildVault("x-b", [["plain", "<div>B's own plain</div>"], ["only-b", "<div>B</div>"]], []);
+    const IM = `${T}\n${MASTER}\nGOODTOKEN\n${MASTER}\ny\n`;
+    sameT("import into another account (a name taken)", ["-m", "import"], IM, { drive: vb.drive });
+    sameT("import, answer 'n'", ["-m", "import"], `${T}\n${MASTER}\nGOODTOKEN\n${MASTER}\nn\n`, { drive: vb.drive });
+    sameT("import, just Enter at the question", ["-m", "import"], `${T}\n${MASTER}\nGOODTOKEN\n${MASTER}\n\n`, { drive: vb.drive });
+    const once = runX(NEWCLI, ["-m", "import"], IM, { drive: vb.drive });
+    sameT("import again (every note already there)", ["-m", "import"], IM, { drive: once.drive });
+    sameT("import into the account it came from", ["-m", "import"], IM, { drive: vx.drive });
+    sameT("import, some notes refused by Drive", ["-m", "import"], IM, { drive: vb.drive, env: { FAKE_FAIL_CREATE: "rich,s-text" } });
+    sameT("import, wrong OLD master password", ["-m", "import"], `${T}\nWrongPass9\nGOODTOKEN\n${MASTER}\ny\n`, { drive: vb.drive });
+    sameT("import, wrong NEW master password", ["-m", "import"], `${T}\n${MASTER}\nGOODTOKEN\nWrongPass9\ny\n`, { drive: vb.drive });
+    sameT("import, bad token", ["-m", "import"], `${T}\n${MASTER}\nBADTOKEN\n${MASTER}\ny\n`, { drive: vb.drive });
+    sameT("import, a folder that doesn't exist first", ["-m", "import"], `${path.join(HERE, "nope")}\n${IM}`, { drive: vb.drive });
+    const junk = fs.mkdtempSync(path.join(HERE, "junk-")); fs.writeFileSync(path.join(junk, "x.txt"), "x");
+    sameT("import, a folder without transfer files", ["-m", "import"], `${junk}\n${MASTER}\nGOODTOKEN\n${MASTER}\ny\n`, { drive: vb.drive });
+    sameT("import, other options given (ignored)", ["-m", "import", "-t", "BADTOKEN", "-x", "-c", "x"], IM, { drive: vb.drive });
+    sameT("import, Node 18", ["-m", "import"], IM, { drive: vb.drive, preload: [N18] });
+}
+
 if (!PART && [...usedModes].join() !== MODES.join()) { console.error(`tests/cli/regression.parts.mjs must list exactly the modes: ${[...usedModes].join(", ")}`); process.exit(2); }
 if (PART && PART !== "rest") { // just one mode of one vault: done
     fs.rmSync(HERE, { recursive: true, force: true });
@@ -213,11 +302,20 @@ for (const args of [[], ["-m", "bogus"], ["-m"], ["-t", "GOODTOKEN"]]) {
     ok(a.code === 1 && b.code === 1 && !Object.keys(b.files).length && b.out.includes("Usage:") && oldUsage.every((l) => newUsage.has(l)) && b.out.includes("-m export") && b.out.includes("-m import"),
         `${JSON.stringify(args)}: still a usage error (exit 1, nothing written); the usage keeps every old line and adds -m export / -m import`);
 }
-const helpOld = spawnSync(process.execPath, [OLDCLI, "--help"], { encoding: "utf8" }).stdout.split("\n");
-const helpNew = spawnSync(process.execPath, [NEWCLI, "--help"], { encoding: "utf8" }).stdout.split("\n");
-const dropped = helpOld.filter((l) => !helpNew.includes(l));
-ok(dropped.every((l) => /only reads from Google Drive|never changes or deletes|anything there\./.test(l)),
-    "--help: every line of the old help is still there, except the one about Drive being only read (now: only '-m import' adds notes)" + (dropped.length ? `: ${JSON.stringify(dropped)}` : ""));
+// The help was rewritten to be easier to read, so its lines changed - but nothing it said may be lost:
+// every mode and option, every section, every example command, and the key facts of the old help.
+const helpOld = spawnSync(process.execPath, [OLDCLI, "--help"], { encoding: "utf8" }).stdout;
+const helpNew = spawnSync(process.execPath, [NEWCLI, "--help"], { encoding: "utf8" }).stdout;
+const oldFlags = helpOld.split("\n").map((l) => /^  (-h, --help|-[a-z](?: <[a-z]+>| [a-z]+)?)\s/.exec(l)).filter(Boolean).map((m) => m[1]);
+const oldExamples = helpOld.split("\n").filter((l) => l.startsWith("      node enotesmgr-export-cli.js"));
+const sections = ["USAGE", "MODES", "OPTIONS", "WHERE config.json COMES FROM", "WHAT YOU GET", "SECURITY", "EXAMPLES"];
+const facts = ["Copy Export Token", "valid about 1 hour", "eNotes Manager Export_<date>", "eNotes Manager_<date>", "eNotes Manager Sensitive_<date>", "hidden app-data area",
+    "Decrypt Sensitive File", "just Enter skips", "hidden prompts", "shell", "folders 700, files 600", "NOT encrypted", "nothing is ever overwritten", "master password that was in use",
+    "doesn't exist is asked for again", "are ignored", "-d wins", "never changes or deletes"];
+const lost = [...oldFlags, ...oldExamples, ...sections, ...facts].filter((x) => !helpNew.includes(x));
+ok(oldFlags.length >= 10 && oldExamples.length >= 4 && lost.length === 0,
+    `--help (rewritten to be easier to read): still has every mode and option (${oldFlags.length}), every example command (${oldExamples.length}), every section and the key facts of the old help` +
+    (lost.length ? `; missing: ${JSON.stringify(lost)}` : ""));
 
 fs.rmSync(HERE, { recursive: true, force: true });
 console.log(`\n${checks} checks` + (fails ? `, ${fails} FAILURE(S)` : ", ALL PASSED"));

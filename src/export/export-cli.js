@@ -18,8 +18,13 @@
 //                       account. Export writes every note EXACTLY as the app
 //                       stores it (name, metadata, content) into transfer files
 //                       locked with the account's master password; import adds
-//                       them to another account as they were. Import is the only
-//                       mode that writes to Drive, and it only ever ADDS notes.
+//                       them to another account as they were. Import only ever
+//                       ADDS notes.
+//   rotate    (-m rotate): give an account a NEW file password: back up, save and
+//                       check everything, then (after a typed confirmation) delete
+//                       the account's data, let the app set it up anew, and put
+//                       every note and the settings back. Import and rotate are the
+//                       only modes that write to Drive.
 //
 // Online auth = token hand-off (no OAuth in the CLI, the most future-proof
 // option): the SPA already signs in via Google's maintained GIS library and
@@ -33,6 +38,8 @@ import { cryptoReady, decryptData, encryptVerified } from "../../www/js/crypto/c
 // is shared with the in-app Download button so the two produce identical output.
 import { buildNoteExport, sanitizeName } from "../../www/js/lib/noteExport.js";
 import { isSensitiveContent, findSensitivePayload, sensitiveBaseName } from "../../www/js/lib/sensitiveNote.js";
+// The metadata the app writes on its own files (settings.json): -m rotate writes it the same way.
+import { createAppMeta, updateAppMeta } from "../../www/js/lib/meta.js";
 import {
     mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync,
 } from "node:fs";
@@ -95,6 +102,8 @@ const USAGE =
     "  Move all notes to another account (online; everything is asked):\n" +
     "             node enotesmgr-export-cli.js -m export   (logged in as the OLD account)\n" +
     "             node enotesmgr-export-cli.js -m import   (logged in as the NEW account)\n" +
+    "  Rotate the file password (online; everything is asked):\n" +
+    "             node enotesmgr-export-cli.js -m rotate\n" +
     "  Help:      node enotesmgr-export-cli.js --help\n";
 
 function usageExit(msg) {
@@ -104,125 +113,199 @@ function usageExit(msg) {
 }
 
 // -h / --help: the full documentation, on stdout.
-const HELP = `eNotesMgr export utility - enotesmgr-export-cli.js
+const HELP = `eNotesMgr export utility  -  enotesmgr-export-cli.js
 
-Exports your eNotesMgr notes to files on this computer: from Google Drive, or
-from a local copy of your data. It needs only Node.js 18 or newer (no npm
-install, no other files): the app's own encryption code is built in.
+  Saves your eNotesMgr notes as files on this computer, moves them to another
+  account, or gives your account a new file password.
+  It needs only Node.js 18 or newer: nothing to install, no other files.
 
-USAGE
-  node enotesmgr-export-cli.js -m on  [-t <export-token>] [-x]
-  node enotesmgr-export-cli.js -m off [-c <config.json>] [-n <note-file> | -d <notes-folder>]
-  node enotesmgr-export-cli.js -m sensitive [-s <file.sensitive | folder>]
-  node enotesmgr-export-cli.js -m export
-  node enotesmgr-export-cli.js -m import
-  node enotesmgr-export-cli.js -h | --help
+
+USAGE - what do you want to do?
+
+  Save all my notes as readable files:
+      node enotesmgr-export-cli.js -m on
+
+  Keep an encrypted copy of my data (a backup):
+      node enotesmgr-export-cli.js -m on -x
+
+  Read notes from that copy, offline:
+      node enotesmgr-export-cli.js -m off
+
+  Open my sensitive notes (<name>.sensitive files):
+      node enotesmgr-export-cli.js -m sensitive
+
+  Move all my notes to another account:
+      node enotesmgr-export-cli.js -m export     (logged in as the OLD account)
+      node enotesmgr-export-cli.js -m import     (logged in as the NEW account)
+
+  Give my account a new file password (and new recovery codes):
+      node enotesmgr-export-cli.js -m rotate
+
+  Show this help:
+      node enotesmgr-export-cli.js --help
+
+  The utility asks for everything it needs. Passwords and the export token
+  are typed at hidden prompts.
+
+
+THE EXPORT TOKEN
+
+  The online modes (-m on, -m export, -m import, -m rotate) need an export
+  token: open the app on a PC, log in, open the menu and pick
+  'Copy Export Token', then paste it when asked. It is valid about 1 hour.
+
 
 MODES
-  -m on         Online: read your notes from Google Drive. Needs an export
-                token: in the app, on a PC, open the menu and pick
-                'Copy Export Token' (it is valid about 1 hour).
-                  without -x  decrypt every note into a new folder
-                              'eNotes Manager Export_<date>' (asks for your
-                              master password).
-                  with -x     download the whole 'eNotes Manager' Drive folder,
-                              still encrypted, into a new folder
-                              'eNotes Manager_<date>': a local copy for offline
-                              use and backup (no password asked).
-  -m off        Offline: decrypt notes from a local copy made with '-m on -x'
-                (no internet needed). Asks for anything not given as an option:
-                the config.json, one note file or a whole folder of them, and
-                the master password. Writes into a new folder
-                'eNotes Manager Export_<date>'.
-  -m sensitive  Decrypt sensitive notes. The two modes above can only remove
-                the master-password layer, so they write a sensitive note still
-                locked with its own note password, as <name>.sensitive. This
-                mode asks for each note's password (just Enter skips that note)
-                and writes the readable notes into a new folder
-                'eNotes Manager Sensitive_<date>'. No Google Drive, no master
-                password. (In the app, on a PC: menu > 'Decrypt Sensitive File'
-                does the same.)
-  -m export     Online: save ALL notes of an account for moving them to
-                another account. Every note is saved exactly as the app stores
-                it - its name, content and all its details (type, dates,
-                sensitive or not) - one file per note, in a new folder
-                'eNotes Manager Transfer_<date>'.
-                Each file is locked with this account's master password, so
-                the folder is as safe as your notes in Google Drive (sensitive
-                notes stay locked with their own note password too). Asks for
-                the export token (in the app, logged in with this account:
-                menu > 'Copy Export Token') and the master password.
-                Only reads Google Drive.
-  -m import     Online: add the notes of such a transfer folder to an account
-                (set the account up in the app first) - each note exactly as it
-                was: same name, content and details, as if made there by hand.
-                Asks for the transfer folder, the master password of the OLD
-                account (that locked the files), the export token of the NEW
-                account (in the app, logged in with it: menu > 'Copy Export
-                Token'), the NEW account's master password, and a final yes.
-                Only the folder's own transfer files are read (sub-folders and
-                other files are ignored). A note that is already there,
-                identical, is skipped - so running it again adds nothing twice;
-                any other note whose name is taken gets " (1)", " (2)"...
-                before its extension. Existing notes are never changed or
-                deleted.
+
+  -m on
+      Reads all your notes from Google Drive and saves them, decrypted, in a
+      new folder 'eNotes Manager Export_<date>'.
+      Asks for: the export token and your master password.
+
+  -m on -x
+      Downloads your whole 'eNotes Manager' data from Google Drive, still
+      encrypted, into a new folder 'eNotes Manager_<date>': a copy for backup
+      and for offline use.
+      Asks for: the export token only (nothing is decrypted).
+
+  -m off
+      Works offline (no internet): decrypts notes from a copy made with
+      '-m on -x' and saves them in a new folder 'eNotes Manager Export_<date>'.
+      Asks for: the copy's config.json, one note file or the whole folder of
+      notes, and the master password that was in use when the copy was made
+      (anything not given as an option).
+
+  -m sensitive
+      Opens sensitive notes. The modes above save a sensitive note still
+      locked with its own note password, as <name>.sensitive. This mode asks
+      for each note's password (just Enter skips a note) and saves the
+      readable notes in a new folder 'eNotes Manager Sensitive_<date>'.
+      No internet, no master password needed.
+      (In the app, on a PC: menu > 'Decrypt Sensitive File' does the same.)
+
+  -m export
+      Saves ALL notes of an account, for moving them to another account: one
+      file per note, exactly as the app stores it (name, content, type, dates,
+      sensitive or not), in a new folder 'eNotes Manager Transfer_<date>'.
+      The files are locked with that account's master password. Only reads
+      Google Drive.
+      Asks for: the export token and the master password.
+
+  -m import
+      Adds the notes of such a transfer folder to an account (set it up in the
+      app first), each exactly as it was - as if made there by hand.
+      - A note that is already there, identical, is skipped: running it again
+        adds nothing twice.
+      - A note whose name is taken gets " (1)", " (2)"... before its extension.
+      - Existing notes are never changed or deleted.
+      - Only the folder's own transfer files are read (not sub-folders).
+      Asks for: the transfer folder, the master password of the OLD account
+      (that locked the files), the export token and the master password of
+      the NEW account, and a final yes.
+
+  -m rotate
+      Gives your account a NEW file password - the key all your notes are
+      encrypted with - and new recovery codes. Every note (name, content,
+      details) and your settings (theme, session timeout) stay exactly as
+      they are. Everything is kept in one new folder
+      'eNotes Manager Rotation_<date>':
+        1. it backs up your data, still encrypted (like -m on -x);
+        2. it saves every note and your settings, locked with your master
+           password;
+        3. it reads it all back to check it;
+        4. only then, after you type 'WIPE <your e-mail>', it deletes your
+           eNotesMgr data in Google Drive (like the app's 'Wipe all App Data');
+        5. you set the account up again in the app - that makes the new file
+           password and new recovery codes - and paste a new export token;
+        6. it puts every note and your settings back, and checks them.
+      If it stops after step 4, nothing is lost: run '-m rotate' again in the
+      same folder to finish. Close eNotesMgr on your other devices first.
+      Asks for: the export token, the master password, the confirmation, then
+      the new export token and the new master password.
+
 
 OPTIONS
-  -t <token>    (on) the export token. Without -t you are asked to paste it
-                (hidden input).
-  -x            (on) make the still-encrypted local copy instead of decrypting.
-  -c <file>     (off) the config.json of a local copy, e.g.
+
+  -t <token>    (-m on) the export token. Without it you are asked to paste it.
+  -x            (-m on) make the encrypted copy instead of decrypting.
+  -c <file>     (-m off) the config.json of a copy, e.g.
                 "eNotes Manager_<date>/Config/config.json"
-  -d <folder>   (off) a folder of note files, e.g. "eNotes Manager_<date>/Entries"
-  -n <file>     (off) one note file from that folder. If -d is also given, -d wins.
-  -s <path>     (sensitive) a .sensitive file, or a folder holding them (e.g. an
-                'eNotes Manager Export_<date>' folder). Without -s you are asked.
+  -d <folder>   (-m off) a folder of note files, e.g.
+                "eNotes Manager_<date>/Entries"
+  -n <file>     (-m off) one note file from that folder (if -d is given too,
+                -d wins).
+  -s <path>     (-m sensitive) a .sensitive file, or a folder holding them
+                (e.g. an 'eNotes Manager Export_<date>' folder).
   -h, --help    show this help.
-  '-m export' and '-m import' take no options: everything is asked.
-  Options that don't apply to the chosen mode are ignored. A path that doesn't
-  exist is asked for again.
+
+  -m export, -m import and -m rotate take no options: everything is asked.
+  Options that don't apply to the chosen mode are ignored. A path that
+  doesn't exist is asked for again.
+
 
 WHERE config.json COMES FROM
-  The app keeps its data in Google Drive's hidden app-data area, so config.json
-  can't be downloaded from the Google Drive website. Make a local copy with
+
+  The app keeps its data in Google Drive's hidden app-data area, so
+  config.json can't be downloaded from the Google Drive website. Make a local
+  copy with
       node enotesmgr-export-cli.js -m on -x
-  and give '-m off' its Config/config.json and its Entries folder. A copy is a
-  snapshot: run '-m on -x' again to include newer notes. It opens with the
+  and give '-m off' its Config/config.json and its Entries folder. A copy is
+  a snapshot: run '-m on -x' again to include newer notes. It opens with the
   master password that was in use when the copy was made.
 
+
 WHAT YOU GET
-  Rich text note  -> <name>.html: looks as it did in the app, with its pictures
-                     and audio built in.
-  Uploaded file   -> the original file under its own name (photo.png, doc.pdf...).
-  Sensitive note  -> <name>.sensitive, still locked with the note's own password;
-                     '-m sensitive' turns it into <name>.html / the original file.
+
+  Rich text note   ->  <name>.html: looks as it did in the app, with its
+                       pictures and audio built in.
+  Uploaded file    ->  the original file under its own name (photo.png,
+                       doc.pdf...).
+  Sensitive note   ->  <name>.sensitive, still locked with its own password;
+                       '-m sensitive' turns it into <name>.html or the
+                       original file.
+
   Names that clash get " (1)", " (2)"... - nothing is ever overwritten.
 
+
 SECURITY
-  - Passwords and the export token are only ever typed at hidden prompts. There
-    are no options for them on purpose: they would be kept in your shell
+
+  - Passwords and the export token are only ever typed at hidden prompts.
+    There are no options for them on purpose: they would stay in your shell
     history and be visible to other programs.
   - Everything written is private to you (folders 700, files 600; except on
     Windows, which doesn't use these permissions).
-  - Decrypted files are NOT encrypted: delete them when you no longer need them.
-  - Only '-m import' writes to Google Drive, and it only adds new notes: the
-    utility never changes or deletes anything there.
+  - Decrypted files are NOT encrypted: delete them when you no longer need
+    them.
+  - Only '-m import' and '-m rotate' write to Google Drive. '-m import' only
+    adds new notes. '-m rotate' deletes your eNotesMgr data there only after
+    everything is backed up, saved and checked and you typed the
+    confirmation, and then puts it all back. Otherwise the utility
+    never changes or deletes anything there.
+
 
 EXAMPLES
-  Export everything from Drive, decrypted:
+
+  Save everything from Drive, decrypted:
       node enotesmgr-export-cli.js -m on
+
   Make a local encrypted copy (backup / for offline use):
       node enotesmgr-export-cli.js -m on -x
-  Export from that copy later, offline:
+
+  Read notes from that copy later, offline:
       node enotesmgr-export-cli.js -m off -c "eNotes Manager_20260110_0930/Config/config.json" -d "eNotes Manager_20260110_0930/Entries"
-  Then decrypt the sensitive notes it wrote:
+
+  Then open the sensitive notes it saved:
       node enotesmgr-export-cli.js -m sensitive -s "eNotes Manager Export_20260110_0945"
+
   Move all your notes to another account:
       node enotesmgr-export-cli.js -m export
           (asks: token + master password of the OLD account)
       node enotesmgr-export-cli.js -m import
           (asks: the transfer folder, the OLD master password,
            token + master password of the NEW account)
+
+  Give your account a new file password (and new recovery codes):
+      node enotesmgr-export-cli.js -m rotate
 `;
 
 // --- prompts -----------------------------------------------------------------
@@ -232,7 +315,7 @@ EXAMPLES
 // 'line' listener feeds a queue, and each prompt pulls the next line. We write
 // the query ourselves and mute echo for hidden inputs. Must be closed at the end
 // or the open stdin keeps the process alive.
-let _rl = null, _muting = false, _waiter = null;
+let _rl = null, _muting = false, _waiter = null, _inputEnded = false;
 const _queue = [];
 function initRl() {
     if (_rl) return;
@@ -242,8 +325,11 @@ function initRl() {
         if (_waiter) { const w = _waiter; _waiter = null; w(line); }
         else _queue.push(line);
     });
-    _rl.on("close", () => { if (_waiter) { const w = _waiter; _waiter = null; w(""); } });
+    _rl.on("close", () => { _inputEnded = true; if (_waiter) { const w = _waiter; _waiter = null; w(""); } });
 }
+// True once the input has ended (e.g. piped input used up) and no answer is left
+// to read: a prompt then could only get "". Used by -m rotate to stop cleanly.
+const inputUsedUp = () => _inputEnded && !_queue.length;
 function nextLine() {
     initRl();
     return _queue.length ? Promise.resolve(_queue.shift())
@@ -690,6 +776,29 @@ async function accountData(token) {
 const transferDirName = () => `eNotes Manager Transfer_${stamp()}`;
 const transferDirTaken = (dir) => new Error(`A folder '${dir}' already exists here (an export made in this same minute). Nothing was written - wait a minute and run the export again.`);
 
+// Write one transfer file per note into `dir` (note-0001.enotes ...): the note exactly as stored, locked with
+// `master`. A note that can't be read is reported (SKIPPED) and left out. Used by -m export and -m rotate.
+// -> { done, sensitive, failed: [names], recs: [{ file, rec }] }
+async function exportNotes(dir, existing, token, filePassword, master) {
+    let done = 0, sensitive = 0;
+    const failed = [], recs = [];
+    for (const [i, e] of existing.entries()) {
+        try {
+            const content = decryptData(await downloadText(e.id, token), filePassword);
+            const rec = { format: TRANSFER_FORMAT, version: 1, name: e.name, appProperties: e.appProperties || null, content };
+            const file = join(dir, `note-${String(i + 1).padStart(4, "0")}${TRANSFER_EXT}`);
+            writeFileSync(file, `${TRANSFER_HEADER}\n${encryptVerified(JSON.stringify(rec), master)}\n`, { mode: FILE_MODE });
+            done++;
+            recs.push({ file: basename(file), rec });
+            if (isSensitiveContent(content)) sensitive++;
+        } catch (err) {
+            failed.push(e.name);
+            console.warn(`  SKIPPED a note: ${err.message}`);
+        }
+    }
+    return { done, sensitive, failed, recs };
+}
+
 async function runExportForTransfer() {
     console.log("Export for moving notes (-m export): saves every note of an account, exactly as stored, locked with its master password. (Other options are ignored.)");
     if (existsSync(transferDirName())) throw transferDirTaken(transferDirName());
@@ -705,21 +814,7 @@ async function runExportForTransfer() {
     try { mkdirSync(dir, { mode: DIR_MODE }); } catch (err) { throw err.code === "EEXIST" ? transferDirTaken(dir) : err; }
     const where = join(process.cwd(), dir);
     console.log("Transfer folder: " + where);
-    let done = 0, sensitive = 0;
-    const failed = [];
-    for (const [i, e] of existing.entries()) {
-        try {
-            const content = decryptData(await downloadText(e.id, token), filePassword);
-            const rec = { format: TRANSFER_FORMAT, version: 1, name: e.name, appProperties: e.appProperties || null, content };
-            const file = join(dir, `note-${String(i + 1).padStart(4, "0")}${TRANSFER_EXT}`);
-            writeFileSync(file, `${TRANSFER_HEADER}\n${encryptVerified(JSON.stringify(rec), master)}\n`, { mode: FILE_MODE });
-            done++;
-            if (isSensitiveContent(content)) sensitive++;
-        } catch (err) {
-            failed.push(e.name);
-            console.warn(`  SKIPPED a note: ${err.message}`);
-        }
-    }
+    const { done, sensitive, failed } = await exportNotes(dir, existing, token, filePassword, master);
     console.log(`\nExported ${done} of ${existing.length} note(s)` + (sensitive ? ` (${sensitive} sensitive)` : "") + ` into '${where}'.` +
         (failed.length ? ` Not exported: ${failed.length}.` : "") +
         `\nThe files are locked with the master password of ${account}.` +
@@ -793,9 +888,26 @@ async function runImportFromTransfer() {
     const newMaster = await promptHidden(`Master password of ${account} - the NEW account (hidden): `);
     const filePassword = await pickFilePassword(configFiles, existing, token, { master: newMaster });
 
-    // Already there? The same note - name (or a " (n)" copy of it), details and
-    // content - is not added again, so a re-run (e.g. after a failure) adds only
-    // what is missing.
+    const r = await addTransferNotes({ recs, token, account, entriesFolder, existing, filePassword, ask: true });
+    if (r.nothing) {
+        if (unreadable.length) process.exitCode = 1;
+        return;
+    }
+    if (r.declined) return;
+    console.log(`\nImported ${r.done} of ${r.toAdd.length} note(s) into ${account}.` + (r.already ? ` ${r.already} were already there.` : "") +
+        (r.failed.length ? ` Not imported: ${r.failed.join(", ")} - run the import again to add them.` : "") + "\nReload the app to see them.");
+    if (r.failed.length || unreadable.length) process.exitCode = 1;
+}
+
+// Add transfer notes (recs: the notes read from transfer files) to an account's Entries folder, each exactly
+// as it was. Already there? The same note - name (or a " (n)" copy of it), details and content - is not
+// added again, so a re-run (e.g. after a failure) adds only what is missing. ask: ask "Add these...? (y/N)"
+// first. Used by -m import and -m rotate.
+// exactNames (-m rotate: the same account's own notes coming back): every note keeps its exact name - also
+// two notes that had the same name - and each note already there counts for one transfer note only. A
+// name is changed (" (1)") only if a note that is NOT one of the transfer notes has it.
+// -> { toAdd, already, done, failed: [names], nothing (all already there), declined (answered no) }
+async function addTransferNotes({ recs, token, account, entriesFolder, existing, filePassword, ask, exactNames = false }) {
     const plain = new Map(); // existing note id -> its content
     const contentOf = async (e) => {
         if (!plain.has(e.id)) {
@@ -807,28 +919,35 @@ async function runImportFromTransfer() {
     };
     const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const toAdd = [];
+    const matched = new Set(); // (exactNames) existing notes already counted for a transfer note
     let already = 0;
     for (const rec of recs) {
         const ext = extname(rec.name), stem = rec.name.slice(0, rec.name.length - ext.length);
         const copy = new RegExp(`^${esc(stem)} \\(\\d+\\)${esc(ext)}$`);
         let found = false;
-        for (const e of existing.filter((x) => x.name === rec.name || copy.test(x.name))) {
-            if (sameProps(e.appProperties, rec.appProperties) && (await contentOf(e)) === rec.content) { found = true; break; }
+        for (const e of existing.filter((x) => (x.name === rec.name || copy.test(x.name)) && !matched.has(x.id))) {
+            if (sameProps(e.appProperties, rec.appProperties) && (await contentOf(e)) === rec.content) {
+                found = true;
+                if (exactNames) matched.add(e.id);
+                break;
+            }
         }
         if (found) already++; else toAdd.push(rec);
     }
     console.log(`${toAdd.length} note(s) to add` + (already ? `, ${already} already there (identical - skipped)` : "") + ".");
     if (!toAdd.length) {
         console.log("Nothing to import: every note is already there.");
-        if (unreadable.length) process.exitCode = 1;
-        return;
+        return { toAdd, already, done: 0, failed: [], nothing: true };
     }
-    const answer = (await promptVisible(`Add these ${toAdd.length} note(s) to ${account}? (y/N): `)).toLowerCase();
-    if (answer !== "y" && answer !== "yes") {
-        console.log("Nothing imported.");
-        return;
+    if (ask) {
+        const answer = (await promptVisible(`Add these ${toAdd.length} note(s) to ${account}? (y/N): `)).toLowerCase();
+        if (answer !== "y" && answer !== "yes") {
+            console.log("Nothing imported.");
+            return { toAdd, already, done: 0, failed: [], declined: true };
+        }
     }
-    const taken = new Set(existing.map((e) => e.name));
+    // exactNames: only the names of notes that are not transfer notes count as taken.
+    const taken = new Set(existing.filter((e) => !exactNames || !matched.has(e.id)).map((e) => e.name));
     let done = 0;
     const failed = [];
     for (const rec of toAdd) {
@@ -836,7 +955,7 @@ async function runImportFromTransfer() {
         try {
             const cipher = encryptVerified(rec.content, filePassword); // never store what wouldn't decrypt
             await driveCreate(name, cipher, entriesFolder.id, rec.appProperties, token);
-            taken.add(name);
+            if (!exactNames) taken.add(name);
             done++;
             console.log(`  imported '${name}'` + (name !== rec.name ? ` (the name '${rec.name}' was taken)` : ""));
         } catch (err) {
@@ -844,9 +963,401 @@ async function runImportFromTransfer() {
             console.warn(`  FAILED '${rec.name}': ${err.message}`);
         }
     }
-    console.log(`\nImported ${done} of ${toAdd.length} note(s) into ${account}.` + (already ? ` ${already} were already there.` : "") +
-        (failed.length ? ` Not imported: ${failed.join(", ")} - run the import again to add them.` : "") + "\nReload the app to see them.");
-    if (failed.length || unreadable.length) process.exitCode = 1;
+    return { toAdd, already, done, failed };
+}
+
+// --- rotating the file password: -m rotate -----------------------------------
+// Gives an account a NEW file password - the key every note and the settings are
+// encrypted with - and loses nothing:
+//   1. back up the account's eNotesMgr data, still encrypted, exactly as -m on -x;
+//   2. save every note exactly as stored (as -m export) and the settings, locked
+//      with the master password;
+//   3. read all of it back and check it;
+//   4. only then, and only after the user typed "WIPE <account>", delete the
+//      account's eNotesMgr data in Drive, as the app's 'Wipe all App Data' does;
+//   5. the user sets the account up again in the app, which makes a new random
+//      file password and new recovery codes, and pastes a new export token;
+//   6. put every note back (as -m import) and the settings, under the new file
+//      password, and check every note and the settings in Drive.
+// Everything it writes is in ONE new folder 'eNotes Manager Rotation_<date>':
+// backup/ (step 1), transfer/ (the notes - a normal transfer folder, -m import
+// takes it too), the settings file, and rotation.json - the progress (no
+// secrets). A rotation that stops after the wipe (no token yet, a network
+// problem...) is continued by running -m rotate again in the same place.
+const ROTATION_PREFIX = "eNotes Manager Rotation";
+const ROTATION_FORMAT = "eNotesMgr rotation";
+const ROTATION_STATE = "rotation.json";
+const SETTINGS_HEADER = "eNotesMgr settings v1";
+const SETTINGS_FORMAT = "eNotesMgr settings";
+const SETTINGS_FILE = "settings.enotes-settings";
+
+const rotationDirName = () => `${ROTATION_PREFIX}_${stamp()}`;
+const rotationDirTaken = (dir) => new Error(`A folder '${dir}' already exists here (a rotation started in this same minute). Nothing was done - wait a minute and run it again.`);
+
+function readRotationState(dir) {
+    try {
+        const s = JSON.parse(readFileSync(join(dir, ROTATION_STATE), "utf8"));
+        return s && s.format === ROTATION_FORMAT && s.version === 1 ? s : null;
+    } catch { return null; }
+}
+function writeRotationState(dir, state) {
+    state.updated = new Date().toISOString();
+    writeFileSync(join(dir, ROTATION_STATE), JSON.stringify(state, null, 2) + "\n", { mode: FILE_MODE });
+}
+// Rotations in this folder that stopped after (or while) deleting the account's data - newest first.
+function unfinishedRotations() {
+    return readdirSync(".").filter((d) => d.startsWith(ROTATION_PREFIX + "_") && isDir(d)).sort().reverse()
+        .map((dir) => ({ dir, state: readRotationState(dir) }))
+        .filter((x) => x.state && (x.state.phase === "wiping" || x.state.phase === "wiped"));
+}
+
+// The settings, locked (verified) with the master password, like a transfer file.
+function writeSettingsFile(p, settings, master) {
+    const rec = { format: SETTINGS_FORMAT, version: 1, settings };
+    writeFileSync(p, `${SETTINGS_HEADER}\n${encryptVerified(JSON.stringify(rec), master)}\n`, { mode: FILE_MODE });
+}
+function readSettingsFile(p, master) {
+    const text = readFileSync(p, "utf8");
+    if (!text.startsWith(SETTINGS_HEADER + "\n")) throw new Error("not a settings file");
+    const rec = JSON.parse(decryptData(text.slice(SETTINGS_HEADER.length + 1).trim(), master));
+    if (rec.format !== SETTINGS_FORMAT || rec.version !== 1 || !rec.settings || typeof rec.settings !== "object") throw new Error("not a version-1 settings file");
+    return rec.settings;
+}
+
+async function accountEmail(token) {
+    return ((((await (await driveGet(`${DRIVE}/about?fields=user`, token)).json()).user) || {}).emailAddress) || "";
+}
+
+// Every file under a Drive folder (recursively), with the folder it is in.
+async function treeFiles(folderId, token) {
+    const out = [];
+    for (const c of await listChildren(folderId, token)) {
+        if (c.mimeType === FOLDER_MIME) out.push(...await treeFiles(c.id, token));
+        else out.push({ ...c, parent: folderId });
+    }
+    return out;
+}
+
+// Delete a file or folder (with everything in it) in Drive.
+async function driveDelete(id, token) {
+    const r = await fetch(`${DRIVE}/files/${id}`, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+    if (r.status === 401) throw new Error("Drive rejected the export token (expired or invalid).");
+    if (!r.ok && r.status !== 404) throw new Error(`Drive did not delete it (${r.status})`);
+}
+
+// Replace a file's content and merge appProperties into its metadata (the same multipart update the app uses).
+async function driveUpdate(id, content, appProperties, token) {
+    const boundary = "enotes_boundary_" + Math.random().toString(36).slice(2);
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ appProperties })}\r\n` +
+        `--${boundary}\r\nContent-Type: text/plain\r\n\r\n${content}\r\n--${boundary}--`;
+    const r = await fetch(`${DRIVE_UPLOAD}/files/${id}?uploadType=multipart&fields=id,name`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": `multipart/related; boundary=${boundary}` },
+        body,
+    });
+    if (r.status === 401) throw new Error("Drive rejected the export token (expired or invalid).");
+    if (!r.ok) throw new Error(`Drive did not save it (${r.status})`);
+}
+
+// An account as a rotation sees it. { account, setUp: false } if it has no eNotesMgr data; otherwise its data
+// (found like every online mode) plus what the wipe would delete: the tree in use and any other, EMPTY,
+// 'eNotes Manager' trees. Anything else that holds files - another tree with files in it, a 2nd Entries
+// folder with notes... - is listed in `unexpected`: then the rotation deletes nothing (it would not be in
+// the transfer).
+async function rotationAccount(token) {
+    const account = await accountEmail(token);
+    const managers = await findAllConfirmed("eNotes Manager", STORAGE.rootParent, token, true);
+    if (!managers.length) return { account, setUp: false };
+    const { manager } = await pickManager(token);
+    const configFolder = await pickSubfolder("Config", manager.id, token);
+    const entriesFolder = await pickSubfolder("Entries", manager.id, token);
+    const recoveryFolder = await pickSubfolder("Recovery", manager.id, token);
+    const configFiles = configFolder ? await findAllConfirmed("config.json", configFolder.id, token, false) : [];
+    if (!configFolder || !entriesFolder || !configFiles.length) {
+        throw new Error(`${account}'s eNotesMgr data is incomplete (no Entries folder or config.json): unlock the app once with this account (a recovery code restores config.json).`);
+    }
+    const existing = await listChildren(entriesFolder.id, token);
+    const files = await treeFiles(manager.id, token);
+    const known = new Set([entriesFolder.id, configFolder.id, recoveryFolder && recoveryFolder.id].filter(Boolean));
+    const unexpected = files.filter((f) => !known.has(f.parent)).map((f) => `'${f.name}' (in another folder of your eNotesMgr data)`);
+    const emptyOthers = [];
+    for (const m of managers.filter((x) => x.id !== manager.id)) {
+        const inside = await treeFiles(m.id, token);
+        if (inside.length) unexpected.push(`${inside.length} file(s) in a second 'eNotes Manager' folder`);
+        else emptyOthers.push(m);
+    }
+    return { account, setUp: true, manager, configFolder, entriesFolder, configFiles, existing, files, emptyOthers, unexpected };
+}
+
+// The account's settings (settings.json, opened with the file password). -> { settings } or { settings: null, why }
+async function readAccountSettings(acc, filePassword, token) {
+    const found = await findAllConfirmed("settings.json", acc.configFolder.id, token, false);
+    if (!found.length) return { settings: null, why: "this account has no saved settings" };
+    for (const f of found) {
+        try {
+            const s = JSON.parse(decryptData(await downloadText(f.id, token), filePassword));
+            if (s && typeof s === "object") return { settings: s };
+        } catch { /* not readable with this file password */ }
+    }
+    return { settings: null, why: "the saved settings could not be read" };
+}
+
+const sameRec = (a, b) => a.name === b.name && a.content === b.content && sameProps(a.appProperties, b.appProperties) && !a.appProperties === !b.appProperties;
+
+// Read everything back from the rotation folder with the master password and compare it with what was saved.
+function checkSaved(dir, master, recs, settings) {
+    const tdir = join(dir, "transfer");
+    const onDisk = readdirSync(tdir).sort();
+    if (onDisk.length !== recs.length) throw new Error(`the transfer folder holds ${onDisk.length} file(s), not ${recs.length}`);
+    for (const { file, rec } of recs) {
+        let back;
+        try { back = readTransferFile(join(tdir, file), master); } catch { throw new Error(`${file} does not open again`); }
+        if (!sameRec(back, rec)) throw new Error(`${file} does not hold its note exactly`);
+    }
+    if (settings && JSON.stringify(readSettingsFile(join(dir, SETTINGS_FILE), master)) !== JSON.stringify(settings)) {
+        throw new Error("the settings file does not hold the settings exactly");
+    }
+}
+
+// What a rotation folder holds, opened with the master password the notes were saved with. Every transfer
+// file must open, and their number must be the one recorded.
+function loadRotationFolder(dir, state, master) {
+    const tdir = join(dir, "transfer");
+    const files = isDir(tdir) ? readdirSync(tdir).sort() : [];
+    const recs = [];
+    for (const f of files) {
+        try { recs.push(readTransferFile(join(tdir, f), master)); } catch {
+            throw new Error(`'${join(tdir, f)}' does not open with that password. Use the master password the account had when the rotation started.`);
+        }
+    }
+    if (recs.length !== state.notes) throw new Error(`'${tdir}' holds ${recs.length} note(s), but ${state.notes} were saved: it is not complete. Your backup in '${join(dir, "backup")}' is untouched.`);
+    let settings = null;
+    if (state.settings) {
+        try { settings = readSettingsFile(join(dir, SETTINGS_FILE), master); } catch {
+            throw new Error(`'${join(dir, SETTINGS_FILE)}' does not open with that password.`);
+        }
+    }
+    // The old file password(s): from the backup's config.json copies.
+    const oldKeys = new Set();
+    const cdir = join(dir, "backup", "Config");
+    for (const f of isDir(cdir) ? readdirSync(cdir).filter((x) => x.startsWith("config")) : []) {
+        try { const fp = JSON.parse(decryptData(readFileSync(join(cdir, f), "utf8"), master)).file_password; if (fp) oldKeys.add(fp); } catch { /* another password's copy */ }
+    }
+    return { recs, settings, oldKeys };
+}
+
+function stopAfterWipe(dir, why) {
+    console.log(`\nThe rotation is NOT finished${why ? ` (${why})` : ""}. Nothing is lost: your notes are saved in '${join(process.cwd(), dir)}'.` +
+        "\nSet the account up again in the app, then run in THIS folder:" +
+        "\n  node enotesmgr-export-cli.js -m rotate" +
+        "\nto finish (it asks for the new export token).");
+    process.exitCode = 1;
+}
+
+async function wipeAccount(acc, token, dir, state) {
+    state.phase = "wiping";
+    writeRotationState(dir, state);
+    console.log(`Deleting the eNotesMgr data of ${acc.account} in Google Drive...`);
+    for (const m of [acc.manager, ...acc.emptyOthers]) await driveDelete(m.id, token);
+    state.phase = "wiped";
+    writeRotationState(dir, state);
+    console.log("Deleted.");
+}
+
+const wipePhrase = (account) => `WIPE ${account}`;
+async function confirmWipe(account) {
+    const answer = await promptVisible(`To delete it now, type exactly: ${wipePhrase(account)}\n(anything else stops here, nothing deleted): `);
+    return answer === wipePhrase(account);
+}
+
+// After the wipe: the user sets the account up again in the app; put the notes and the settings back.
+async function finishRotation(dir, state, master, oldKeys, recs, settings) {
+    console.log(`\nNow, in the app (in your browser):` +
+        `\n  1. Log out (or reload the page) and log in again with the same Google account, ${state.account}.` +
+        "\n  2. It asks you to set eNotesMgr up: choose your master password (the same one or a new one)." +
+        "\n     It makes your NEW file password and gives you NEW recovery codes - keep them safe; the old codes no longer work." +
+        "\n  3. On a PC: menu > 'Copy Export Token'.");
+    let token, acc;
+    for (;;) {
+        if (inputUsedUp()) return stopAfterWipe(dir, "no new export token");
+        token = (await promptHidden("Then paste that NEW export token here (hidden): ")).trim();
+        if (!token) return stopAfterWipe(dir, "no new export token");
+        acc = await rotationAccount(token);
+        if (acc.account !== state.account) {
+            console.log(`  That token is for ${acc.account || "another account"}, but this rotation is for ${state.account}. Log in to the app with ${state.account} and copy its token.`);
+            continue;
+        }
+        if (!acc.setUp) {
+            console.log(`  ${state.account} is not set up yet: set it up in the app first (step 2), then copy a new token.`);
+            continue;
+        }
+        break;
+    }
+    // Still the OLD data? (its config.json is byte for byte one in the backup: the deletion didn't happen -
+    // the rotation stopped while deleting.) No password needed to tell.
+    const cdir = join(dir, "backup", "Config");
+    const backupConfigs = new Set(isDir(cdir) ? readdirSync(cdir).filter((x) => x.startsWith("config")).map((x) => readFileSync(join(cdir, x), "utf8")) : []);
+    let stillOld = false;
+    for (const f of acc.configFiles) if (backupConfigs.has(await downloadText(f.id, token))) stillOld = true;
+    if (stillOld) {
+        console.log(`\n${state.account} still has its OLD eNotesMgr data: the deletion did not happen.`);
+        if (acc.unexpected.length) throw new Error(`it also holds data that is not in the saved copy (${acc.unexpected.join("; ")}), so it is not deleted.`);
+        if (!(await confirmWipe(state.account))) return stopAfterWipe(dir, "not deleted");
+        await wipeAccount(acc, token, dir, state);
+        return finishRotation(dir, state, master, oldKeys, recs, settings);
+    }
+    const newMaster = await promptHidden(`Master password you chose when setting ${state.account} up again (hidden): `);
+    const filePassword = await pickFilePassword(acc.configFiles, acc.existing, token, { master: newMaster });
+    if (oldKeys.has(filePassword)) {
+        throw new Error(`${state.account} still has the same file password as before the rotation. Set it up again in the app (that makes a new one), then run -m rotate here again.`);
+    }
+
+    console.log(`\nPutting your ${recs.length} note(s) back into ${state.account}, under the new file password...`);
+    const added = await addTransferNotes({ recs, token, account: acc.account, entriesFolder: acc.entriesFolder, existing: acc.existing, filePassword, ask: false, exactNames: true });
+    if (added.failed.length) return stopAfterWipe(dir, `${added.failed.length} note(s) could not be put back: ${added.failed.join(", ")}`);
+    if (settings) {
+        const cipher = encryptVerified(JSON.stringify(settings), filePassword);
+        const found = await findAllConfirmed("settings.json", acc.configFolder.id, token, false);
+        try {
+            if (found.length) for (const f of found) await driveUpdate(f.id, cipher, updateAppMeta("settings"), token);
+            else await driveCreate("settings.json", cipher, acc.configFolder.id, createAppMeta("settings"), token);
+        } catch (err) {
+            return stopAfterWipe(dir, `the settings could not be saved: ${err.message}`);
+        }
+        console.log("  settings put back (theme, session timeout)");
+    }
+
+    // Check it all in Drive: every note there exactly, opening with the new file password; the settings too.
+    console.log("Checking every note in Google Drive...");
+    const now = await listChildren(acc.entriesFolder.id, token);
+    const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let exact = 0;
+    const counted = new Set();
+    for (const rec of recs) {
+        const ext = extname(rec.name), stem = rec.name.slice(0, rec.name.length - ext.length);
+        const copy = new RegExp(`^${esc(stem)} \\(\\d+\\)${esc(ext)}$`);
+        for (const e of now.filter((x) => (x.name === rec.name || copy.test(x.name)) && !counted.has(x.id))) {
+            let c = null;
+            try { c = decryptData(await downloadText(e.id, token), filePassword); } catch { /* not this one */ }
+            if (c === rec.content && sameProps(e.appProperties, rec.appProperties)) { exact++; counted.add(e.id); break; }
+        }
+    }
+    if (exact !== recs.length) return stopAfterWipe(dir, `only ${exact} of ${recs.length} note(s) are back exactly`);
+    if (settings) {
+        let back = null;
+        for (const f of await findAllConfirmed("settings.json", acc.configFolder.id, token, false)) {
+            try { back = JSON.parse(decryptData(await downloadText(f.id, token), filePassword)); break; } catch { /* next */ }
+        }
+        if (JSON.stringify(back) !== JSON.stringify(settings)) return stopAfterWipe(dir, "the settings are not back exactly");
+    }
+    state.phase = "done";
+    writeRotationState(dir, state);
+    console.log(`\nRotation finished for ${state.account}:` +
+        "\n  - its file password is NEW: the old one opens nothing there any more" +
+        `\n  - all ${recs.length} note(s) are back, exactly as they were` +
+        (settings ? "\n  - your settings are back" : "\n  - settings: the app's defaults (none were carried over)") +
+        "\n  - your recovery codes are the NEW ones the app gave you; the old codes no longer work" +
+        `\nThe backup and the saved notes are in '${join(process.cwd(), dir)}', locked with the master password of before the rotation:` +
+        "\ndelete that folder when you are happy with the result.\nReload the app to see your notes.");
+}
+
+async function resumeRotation({ dir, state }) {
+    console.log(`Continuing the rotation of ${state.account} in '${dir}' (it stopped after deleting the account's data).`);
+    const master = await promptHidden("Master password the notes were saved with (the one the account had when the rotation started) (hidden): ");
+    const { recs, settings, oldKeys } = loadRotationFolder(dir, state, master);
+    console.log(`  ${recs.length} note(s)` + (settings ? " and your settings" : "") + " are ready to be put back.");
+    return finishSafely(dir, state, master, oldKeys, recs, settings);
+}
+
+async function runRotate() {
+    console.log("Rotate the file password (-m rotate): gives this account a NEW file password - the key all its notes are" +
+        "\nencrypted with - and new recovery codes, and puts every note and the settings back exactly as they were." +
+        "\nFirst everything is backed up, saved and checked; only then, after you confirm, is the account's eNotesMgr" +
+        "\ndata deleted in Google Drive; you set the account up again in the app, and everything is put back." +
+        "\nClose eNotesMgr on your other devices and in other tabs first. (Other options are ignored.)\n");
+    const pending = unfinishedRotations();
+    if (pending.length) {
+        const p = pending[0];
+        const answer = (await promptVisible(`A rotation of ${p.state.account} stopped after deleting its data ('${p.dir}'). Continue it? (Y/n): `)).toLowerCase();
+        if (answer === "" || answer === "y" || answer === "yes") return resumeRotation(p);
+        throw new Error(`finish that rotation first (run -m rotate again here and answer y), or move its folder '${p.dir}' away. Nothing was done.`);
+    }
+    if (existsSync(rotationDirName())) throw rotationDirTaken(rotationDirName());
+    const token = (await promptHidden("Paste the export token of the account (in the app, logged in with it: menu > 'Copy Export Token') (hidden): ")).trim();
+    if (!token) throw new Error("Rotation needs an export token. Nothing was done.");
+    const acc = await rotationAccount(token);
+    if (!acc.account) throw new Error("Drive did not say which account this token belongs to. Nothing was done.");
+    if (!acc.setUp) {
+        throw new Error(`${acc.account} has no eNotesMgr data yet: open the app once with this account and set it up first. ` +
+            "(If a rotation stopped after deleting the data, run -m rotate in the folder that holds its 'eNotes Manager Rotation_<date>' folder.) Nothing was done.");
+    }
+    console.log(`Rotating the file password of ${acc.account} (${acc.existing.length} note(s)).`);
+    const master = await promptHidden(`Master password of ${acc.account} (hidden): `);
+    const oldFilePassword = await pickFilePassword(acc.configFiles, acc.existing, token, { master });
+    if (acc.unexpected.length) {
+        throw new Error(`${acc.account}'s eNotesMgr data also holds ${acc.unexpected.join("; ")} - data the rotation would not carry over. ` +
+            "It stops here to keep it safe. Nothing was done.");
+    }
+    const { settings, why } = await readAccountSettings(acc, oldFilePassword, token);
+
+    const dir = rotationDirName();
+    try { mkdirSync(dir, { mode: DIR_MODE }); } catch (err) { throw err.code === "EEXIST" ? rotationDirTaken(dir) : err; }
+    const state = { format: ROTATION_FORMAT, version: 1, account: acc.account, phase: "saving", started: new Date().toISOString(), notes: acc.existing.length, settings: !!settings };
+    writeRotationState(dir, state);
+    console.log("Rotation folder: " + join(process.cwd(), dir));
+    let recs;
+    try {
+        console.log(`\n1. Backing up the eNotesMgr data of ${acc.account}, still encrypted...`);
+        const n = await replicateTreeLocal(acc.manager.id, join(dir, "backup"), token);
+        if (n !== acc.files.length) throw new Error(`the backup holds ${n} file(s), not ${acc.files.length}`);
+        console.log(`   ${n} file(s) backed up into '${join(dir, "backup")}'.`);
+
+        console.log(`2. Saving every note${settings ? " and your settings" : ""}, locked with your master password...`);
+        mkdirSync(join(dir, "transfer"), { mode: DIR_MODE });
+        const ex = await exportNotes(join(dir, "transfer"), acc.existing, token, oldFilePassword, master);
+        if (ex.failed.length) throw new Error(`${ex.failed.length} note(s) could not be read (${ex.failed.join(", ")}), so they could not be saved`);
+        if (settings) writeSettingsFile(join(dir, SETTINGS_FILE), settings, master);
+        else console.log(`   (settings: ${why} - after the rotation they are the app's defaults)`);
+        console.log(`   ${ex.done} note(s)` + (ex.sensitive ? ` (${ex.sensitive} sensitive)` : "") + ` saved into '${join(dir, "transfer")}'.`);
+
+        console.log("3. Checking: reading everything back...");
+        checkSaved(dir, master, ex.recs, settings);
+        recs = ex.recs.map((x) => x.rec);
+        console.log("   Every note" + (settings ? " and the settings" : "") + " opens again, exactly as saved.");
+    } catch (err) {
+        state.phase = "stopped";
+        writeRotationState(dir, state);
+        throw new Error(`${err.message}. Nothing was deleted: your data in Google Drive is untouched.`);
+    }
+    state.phase = "saved";
+    writeRotationState(dir, state);
+
+    console.log(`\n4. Everything is saved and checked. Next, the eNotesMgr data of ${acc.account} - all ${acc.existing.length} note(s),` +
+        "\n   the settings, the file password and the recovery codes - is DELETED in Google Drive, so the app can set it up" +
+        "\n   anew (a new file password, new recovery codes); then everything is put back.");
+    if (!(await confirmWipe(acc.account))) {
+        state.phase = "cancelled";
+        writeRotationState(dir, state);
+        console.log(`Stopped: nothing was deleted. You can delete the folder '${dir}'.`);
+        return;
+    }
+    try {
+        await wipeAccount(acc, token, dir, state);
+    } catch (err) {
+        throw new Error(`could not delete the data (${err.message}). Your notes are safe: in Google Drive and in '${join(process.cwd(), dir)}'. ` +
+            "Run -m rotate again here to try again.");
+    }
+    return finishSafely(dir, state, master, new Set([oldFilePassword]), recs, settings);
+}
+
+// After the wipe nothing may end without saying how to finish: any error ends with the way to continue.
+async function finishSafely(dir, state, master, oldKeys, recs, settings) {
+    try {
+        return await finishRotation(dir, state, master, oldKeys, recs, settings);
+    } catch (err) {
+        console.error("\nRotation stopped: " + (err && err.message ? err.message : err));
+        return stopAfterWipe(dir);
+    }
 }
 
 // --- main --------------------------------------------------------------------
@@ -856,7 +1367,7 @@ async function main() {
         process.stdout.write(HELP);
         return;
     }
-    if (!["on", "off", "sensitive", "export", "import"].includes(args.m)) usageExit("-m must be 'on', 'off', 'sensitive', 'export' or 'import'.");
+    if (!["on", "off", "sensitive", "export", "import", "rotate"].includes(args.m)) usageExit("-m must be 'on', 'off', 'sensitive', 'export', 'import' or 'rotate'.");
 
     await cryptoReady;
 
@@ -864,15 +1375,17 @@ async function main() {
     else if (args.m === "off") await runOffline(args);
     else if (args.m === "sensitive") await runSensitive(args);
     else if (args.m === "export") await runExportForTransfer();
-    else await runImportFromTransfer();
+    else if (args.m === "import") await runImportFromTransfer();
+    else await runRotate();
 
     console.log("Done.");
 }
 
 main()
     .catch((err) => {
-        const importing = process.argv.slice(2).join(" ").includes("-m import");
-        console.error(`\n${importing ? "Import" : "Export"} failed: ` + (err && err.message ? err.message : err));
+        const argv = process.argv.slice(2).join(" ");
+        const what = argv.includes("-m rotate") ? "Rotation" : argv.includes("-m import") ? "Import" : "Export";
+        console.error(`\n${what} failed: ` + (err && err.message ? err.message : err));
         process.exitCode = 1;
     })
     .finally(closeRl); // release stdin so the process can exit
