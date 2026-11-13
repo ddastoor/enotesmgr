@@ -67,6 +67,7 @@ Sensitive notes (an optional extra per-note password, chosen when the note is cr
 
     Export CLI {
         See ../export-cli.md 'Output rules': a sensitive note is written as '<note-name>.sensitive' holding the envelope as-is (still locked with its note password), and the CLI tells the user how to open such files - with the exact command for the folder it just wrote. An export CLI from before this feature wrote such a note as '<note-name>.html' wrapping the envelope; that file can be opened the same way.
+        Moving all notes to another account ('-m export' then '-m import', see ../export-cli.md) keeps sensitive notes exactly as they are: still sensitive, still locked with their own note password, with their exact type and metadata.
         The CLI's own '-m sensitive' mode decrypts them too (see ../export-cli.md): the same shared code and output as 'Decrypt Sensitive File' below, but fully offline - no browser, no Google sign-in, no master password. The note password is only ever typed at a hidden prompt.
     }
 

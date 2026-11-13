@@ -18,10 +18,38 @@ Then, from the repository root:
 node tests/run-all.mjs
 ```
 
+(On Linux, `npx playwright install --with-deps chromium` also installs the
+system libraries Chromium needs; it asks for your sudo password.)
+
 Run just some suites with `--only` (repeatable), e.g.
-`node tests/run-all.mjs --only crypto --only cli`. A full run takes a few
-minutes, mostly because recovery codes are checked with the slow Argon2
-key derivation on purpose.
+`node tests/run-all.mjs --only crypto --only cli`. An unknown suite name is
+refused (with the list of suites), so a typo never quietly runs nothing.
+
+Several jobs run at once - by default one per CPU thread (10 on a 12-thread
+machine with 15 GB), at most one per 1.5 GB of memory, at most 32. Each suite
+is its own process with its own temp folder and fake Drive, each browser
+suite gets its own `serve.py`, the slowest jobs start first, and each job's
+output is printed in one piece when it ends, with its time; the summary lists
+every suite's time. Choose the number with `--jobs N` (or `-j N`). `--jobs 1`
+runs the suites one at a time in the listed order, whole, with the output shown
+live, as before - handy when watching a single suite.
+
+The long suites run as several parts at once, so the whole run gets faster
+with every core added: a suite with a file `<suite>.parts.mjs` next to it
+(e.g. `cli/options.parts.mjs`, `browser/recovery-lockout.test.parts.mjs`)
+exporting `PARTS` is split into those parts - each its own job, chosen with the
+environment variable `ENOTES_TEST_PART` (also handy to run one part by hand).
+Each split suite checks that its parts file lists exactly its parts. To prove
+that the parts together run exactly what the whole suite runs:
+
+```bash
+node tests/run-all.mjs --check-parts
+```
+
+runs every split suite both whole and in its parts (add `--only <suite>` for
+one) and requires the same number of checks, all passing. Run it after
+changing how a suite is split. Most of the time goes into checking recovery
+codes and every export with the slow Argon2 key derivation, on purpose.
 
 ## What is covered
 
@@ -29,9 +57,12 @@ key derivation on purpose.
 |---|---|---|
 | `verify` | `src/export/verify.mjs` | the export CLI bundle was rebuilt after its sources changed |
 | `crypto` | `crypto.test.mjs` | encrypt/decrypt, data from the original app still decrypts, missing passwords refused, secrets wiped from WASM memory, no insecure random fallback, `crypto.wasm` stripped |
+| `runner` | `runner.test.mjs` | the test runner itself (`run-all.mjs`, `lib/pool.mjs`, `lib/serve.mjs`): never more than `--jobs` jobs at once, every suite once, results in order, a failure stops new starts; `--jobs` / `-j` / `--jobs=` and bad values refused; the default (one per CPU thread, memory-capped, 1-32); each browser suite's own `serve.py` - several at once on different ports, and when handed a port another server holds it notices the answer isn't its own and moves on; suites split into parts: the parts file found next to a suite (`<suite>.parts.mjs`), a bad one refused, `cli-options`' parts (each vault's groups + the rest), an unknown part refused, checks counted from a suite's output, `--check-parts`; unknown `--only` names refused; end to end: `--jobs 1` live output as before, several suites at once (browser + node) each printed in one unbroken block, summary with times |
 | `cli` | `cli/run.mjs` | every export CLI mode produces byte-for-byte the same files as the original CLI (from git history, commit `419c522`), plus private file modes, hidden token prompt, safe mirror paths, Node 18 |
 | `sensitive` | `sensitive.test.mjs` | sensitive notes without a browser: the envelope format, both encryption layers (note password inside, file password outside), the shared export rules (`<name>.sensitive`), the CLI's offline export of a sensitive note |
 | `cli-options` | `cli/options.mjs` | the export CLI with EVERY option combination (offline `-c -d`, `-c -n` for every note, `-c -n -d`, every partial wizard and answer, bad / wrong-type / empty paths, wrong master password, ignored extra flags; online `-t`, token prompt, `-t` without a value, empty / bad token, wrong master password, duplicate trees + an older config.json with another key, a momentary Drive miss, config.json missing; `-x` mirror with `-t` / prompt / bad token, offline export from the mirror; Node 18; usage errors; `--help`; and `-m sensitive`: export folder, single files, asked-for / bad path, wrong / master / file password then right, Enter skips, not-a-sensitive-file, `-x` copy files, an original-CLI export, name clashes, no password option, ignored flags, Node 18, password hidden in a real terminal) on four vaults: no sensitive notes, mixed, only sensitive, and output-name clashes. Every export checked file by file; normal notes byte-for-byte the original CLI's output; sensitive notes stay locked (no plaintext anywhere), open only with their note password, to exactly the app's Download (~10 minutes) |
+| `cli-transfer` | `cli/transfer.mjs` | moving all notes to another account (`-m export`, `-m import`): account A with every kind of note (rich text, pictures / audio, uploads incl. one labelled differently from its content and an uploaded .html, sensitive notes of every kind, odd / unicode names, empty, a note from before the metadata existed, two notes with the same name, 3 MB) exported and imported into account B: the transfer folder (made where the command is run, named with the date and time - no folder asked, never written into if it already exists; one private file per note, nothing readable, no names, opens only with A's master password), every note EXACTLY as in A (name, metadata incl. dates, content), nothing existing changed, round trip via the normal export, re-runs and partial failures add nothing twice, importing into the same account adds nothing, sub-folders / other files / other-password / damaged files, every prompt and error, other options ignored, Node 18, secrets hidden in a real terminal |
+| `cli-regression` | `cli/regression.mjs` | the export CLI's existing modes behave EXACTLY as before `-m export` / `-m import` were added: the CLI from main (`518db4b`) and the current one run side by side with identical inputs in every mode and option combination of `-m on`, `-m on -x`, `-m off`, `-m sensitive`, on vaults without / with / with only sensitive notes - same exit code, same console output, byte-identical files and permissions, Drive untouched; the help only gains the new modes |
 | `app-core` | `browser/app-core.test.cjs` | setup, unlock, notes, recovery codes, wall-clock session timeout, CSP, mobile image popup |
 | `features` | `browser/features.test.cjs` | uploads/downloads, rename, search, save prompts, settings, menu; Argon2 runs for every recovery file; secrets not left in WASM memory; spellcheck off |
 | `framing` | `browser/framing.test.cjs` | the app refuses to run inside another site's frame |
@@ -42,8 +73,10 @@ key derivation on purpose.
 | `cli-matrix` | `browser/cli-matrix.test.cjs` | end to end: the app makes normal and sensitive notes (text, text with embedded images, uploads), then the real CLI runs in every mode and option combination on that data (online `-t` / prompt / `-t` without a value / Node 18 / Drive miss / duplicate data / missing config / bad or empty token, `-x` mirror, offline folder / single file / `-c -n -d` / every partial wizard / bad paths / non-note files, wrong master password, usage errors). Normal notes = the app's Download byte-for-byte; sensitive notes = `<name>.sensitive` with no plaintext / image data, which decrypt (in Node and with the app's "Decrypt Sensitive File") to exactly the app's Download - also with the CLI's own `-m sensitive`, including the fully offline chain `-x` copy -> `-m off` -> `-m sensitive` |
 | `media-parity` | `browser/media-parity.test.cjs` | a sensitive note can do everything a normal note can: the same steps in a normal and a sensitive rich text note give the same result at every step - Ctrl+V of a picture from the real clipboard (right after creating / reopening, and a screenshot-sized one), Ctrl+V of text, Insert Image, Insert Audio, pasting image / audio files, ✕ and Delete removal, Ctrl+Z / Ctrl+Y, the Undo / Redo / Bold / Italic / Underline buttons, Ctrl+S and "Nothing to save..", save + reopen, Search, Rename, Download, Delete; both end byte-identical (the sensitive one double encrypted); mobile ✕ with confirm and tap-to-open |
 | `new-user` | `browser/new-user.test.cjs` | a brand-new user sees no change: the app from before sensitive notes (main, from git history) and the current app each set up a new account and are used the same way, side by side. The setup code is byte-for-byte unchanged; login, setup, unlock, settings and recovery-codes screens identical; setup writes the same Drive tree (folders, files, metadata, sizes, decrypted config / settings / recovery files, recovery-codes download) with the same Drive calls; normal notes (New, picture, Save, Upload, Rename, Delete, Settings) store byte-identical data with no `Sensitive` metadata; the main page / menu / `?` help only gain the new items; data made by either version opens unchanged in the other |
+| `transfer` | `browser/transfer.test.cjs` | end to end: account A makes every kind of note in the app (normal and sensitive; text, pictures, audio, uploads incl. one without an extension and an .html file), `-m export`, a brand-new account B set up in the app (with a clashing note), `-m import`: in B's Drive every note is exactly A's (metadata incl. dates, content); in the app as B every note shows, opens (sensitive ones with their note password) and downloads exactly as in A; B's own note untouched; imported notes edit and save; importing again adds only what changed since |
 | `google-signin` | `browser/google-signin.test.cjs` | Google's real sign-in script loads and opens its popup under the app's CSP with no violations (needs internet; skipped when offline) |
 | `fonts` | `browser/fonts.test.cjs` | the font is self-hosted: no Google Fonts requests, CSP allows only local fonts, files match their recorded SHA-256, and (needs internet; skipped offline) text renders pixel-identical to Google Fonts' Nunito |
+| `settings` | `browser/settings.test.cjs` | the Settings page re-reads the settings from Drive when it opens; while it does (the lookup, then the download, both slowed down on purpose in the fake Drive) the timeout field, the theme and Save are disabled and typing changes nothing, Cancel / Escape work; then Drive's copy is shown. A change made at once is never undone by that read; leaving while it loads, coming back and saving: the late read is ignored (nothing more read, no 'Loading...' over the main page); a failed read leaves the settings usable; validation unchanged. The same steps on the app before the fix (`518db4b`) must show the old bug (the change lost, or the save undone in the app) - proof the checks catch it |
 | `data-safety` | `browser/data-safety.test.cjs` | Drive glitches and duplicate / missing files never create a second config.json, never start setup over existing data, never delete the only key to the notes |
 
 ## Notes

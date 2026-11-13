@@ -60,7 +60,12 @@ async function driveRoute(route) {
             return json({ files: [] });
         }
         const files = children(parent).filter((f) => (name === null || f.name === name) && (!folderOnly || f.mimeType === FOLDER));
-        return json({ files: files.map(pub) });
+        // Simulated slow Drive: global.slowLookups = { "<name>": [ms, ...] } makes the next name
+        // lookups for <name> take that long (answered as of the time of the request).
+        const wait = name !== null && global.slowLookups && global.slowLookups[name] && global.slowLookups[name].length ? global.slowLookups[name].shift() : 0;
+        const answer = files.map(pub);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        return json({ files: answer });
     }
     if (p === "/drive/v3/files" && m === "POST") {
         const meta = JSON.parse(req.postData());
@@ -71,7 +76,17 @@ async function driveRoute(route) {
     if ((mm = /^\/drive\/v3\/files\/([^/]+)$/.exec(p))) {
         const f = drive.get(mm[1]);
         if (!f) return json({ error: "not found" }, 404);
-        if (m === "GET" && url.searchParams.get("alt") === "media") return route.fulfill({ status: 200, contentType: "text/plain", body: f.content });
+        if (m === "GET" && url.searchParams.get("alt") === "media") {
+            // Simulated slow / failing Drive: global.slowDownloads = { "<name>": [ms | "fail", ...] }
+            // makes the next downloads of <name> take that long (the content is the one at the time
+            // of the request, as over a slow connection), or fail with a server error.
+            const plan = global.slowDownloads && global.slowDownloads[f.name];
+            const step = plan && plan.length ? plan.shift() : 0;
+            if (step === "fail") return json({ error: "injected failure" }, 500);
+            const body = f.content;
+            if (step > 0) await new Promise((r) => setTimeout(r, step));
+            return route.fulfill({ status: 200, contentType: "text/plain", body });
+        }
         if (m === "PATCH") { Object.assign(f, { name: JSON.parse(req.postData()).name }); return json({ id: f.id, name: f.name }); }
         if (m === "DELETE") { delTree(f.id); return route.fulfill({ status: 204, body: "" }); }
     }
@@ -137,6 +152,14 @@ async function onMain(page) {
     if (await r.count()) { page.sawReminder = true; await r.locator(".modal-actions button", { hasText: "Later" }).click(); }
     else page.sawReminder = false;
 }
+// Open the search popup (toolbar button) and wait until its search box has the focus. The popup
+// focuses it a moment after opening; keys pressed before that (faster than any person types, but
+// possible for a test on a busy machine) would go elsewhere - e.g. a second Enter meant to open the
+// highlighted note would land back in the box and open nothing.
+async function openSearch(page) {
+    await page.click("#tb-search");
+    await page.waitForFunction(() => document.activeElement && document.activeElement.classList.contains("search-input"));
+}
 async function logout(page) { await page.click("#btn-logout"); await page.waitForSelector("#login-btn"); }
 const recoveryFiles = () => children(folderByName("Recovery").id).filter((f) => !f.name.startsWith("one-or-no"));
 async function readDownload(dl) { return fs.readFileSync(await dl.path(), "utf8").trim().split("\n"); }
@@ -148,5 +171,5 @@ function finish() {
 
 module.exports = {
     chromium, fs, BASE, FOLDER, drive, children, folderByName, parseMultipart, driveLog, driveRoute, GIS_STUB,
-    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload,
+    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload, openSearch,
 };

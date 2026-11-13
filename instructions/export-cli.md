@@ -29,7 +29,7 @@ Export CLI utility {
         \(The online -x mode does NOT use this directory; it creates its own 'eNotes Manager_<YYYYMMDD_HHMM>' directory - see its description below.\)
     }
 
-    It runs in three modes, selected by the command-line argument -m <on|off|sensitive> {
+    It runs in five modes, selected by the command-line argument -m <on|off|sensitive|export|import> {
 
         online \(-m on\) {
             Auth is by TOKEN HAND-OFF - the tool does NO Google OAuth itself \(this is the most future-proof: the CLI has no OAuth flow to be deprecated\). The SPA already signs in \(via Google's GIS library\) and holds a live Drive access token \(drive.appdata by default, or drive.file - whichever STORAGE_MODE the app is built with\); the user copies it from the app's menu \("Copy Export Token", PC only - see ./UI/menu/left-vertical-menu.md\) and gives it to the tool. The tool then calls the Google Drive REST API directly with that token. The token is valid for about an hour; an expired/invalid token yields a clear error telling the user to re-copy it.
@@ -86,6 +86,33 @@ Export CLI utility {
             For each sensitive note, ask "Password for '<file>' (Enter to skip): " at a HIDDEN prompt. A wrong password says so and asks again; an empty answer skips that note. There is deliberately NO option to pass a password on the command line (it would end up in shell history / the process list). Nothing decrypted is ever printed.
 
             Each decrypted note is written, per 'Output rules', under the file's name without '.sensitive' (or without the old '.html'): 'bank.sensitive' -> 'bank.html', 'photo.png.sensitive' -> 'photo.png' - into a new folder 'eNotes Manager Sensitive_<YYYYMMDD_HHMM>' (0700, files 0600, " (1)" on name clashes), created only when the first note is decrypted. At the end: "Decrypted N of M sensitive note(s)" (+ which were skipped) and a reminder that these files are NOT encrypted. Exit code 0 (also when notes were skipped).
+        }
+
+        Moving all notes to another account: export \(-m export\) and import \(-m import\) {
+            Purpose: take ALL of a person's notes to another account, quickly and in bulk, so that in the new account they are exactly as they were - as if entered there by hand: same names, same content, same metadata (type, dates, sensitive or not). Both modes are online (export token), take NO options (every other option is ignored) and ask for everything. Everything else in the CLI is unchanged by them.
+
+            Transfer files {
+                One file per note, 'note-0001.enotes', 'note-0002.enotes'... (numbered in Drive's listing order; the names reveal nothing).
+                Content: the first line is the plain marker "eNotesMgr transfer v1" (so import recognises the file without a password); then one line of base64 ciphertext = the verified encryption, with the EXPORTING account's master password, of the JSON { "format": "eNotesMgr transfer", "version": 1, "name": <the note's exact name>, "appProperties": <its metadata exactly as stored, or null for a note from before the metadata existed>, "content": <its stored content after the file-password layer is removed - for a sensitive note its envelope, still locked with its note password> }.
+                So the transfer folder is as safe as the account's notes in Drive (protected by the same master password), and sensitive notes stay additionally locked with their own note passwords.
+            }
+
+            export \(-m export\) {
+                The transfer folder is made in the current folder (where the command is run - no folder is asked for), named with the date and time like the other modes' folders: 'eNotes Manager Transfer_<YYYYMMDD_HHMM>'. It is always a NEW folder: if a folder of that name is already there (an export made in the same minute), the export stops with a clear message ("... already exists here ... Nothing was written - wait a minute and run the export again."), exit 1 - checked first, before anything is asked, and again when the folder is created. It never writes into, or mixes with, an existing folder, and never adds " (1)".
+                1. Ask for the export token (hidden) of the account to export; find its data like the other online modes (same duplicate / glitch rules); no data / incomplete data: clear error, exit 1.
+                2. Ask the account's master password (hidden), get its file password (wrong password: error, exit 1, nothing written).
+                3. Create the transfer folder (0700) and write one transfer file (0600) per note; show the folder's full path (the import asks for it). A note that can't be read is reported (SKIPPED) and the others are still exported (exit 1).
+                4. Say how many notes (and sensitive notes) were exported, into which folder, that the files are locked with this account's master password, and how to import them. Export only reads Google Drive.
+            }
+
+            import \(-m import\) {
+                1. Ask for the transfer folder (re-asked until it exists). Only its own TOP-LEVEL transfer files are read: sub-folders (and everything in them) and every other file are ignored (and listed). No transfer files: say so, exit 1 - before asking any password.
+                2. Ask the master password of the OLD account (hidden) and open every transfer file with it. None opens: clear error ("use the master password the OLD account had when they were exported"), exit 1, before asking for the token. Files that don't open (exported with another password, or damaged) are listed and skipped (exit 1 at the end).
+                3. Ask the export token of the NEW account (hidden; from the app logged in with it), find its data (no data: "set it up first", exit 1), ask the NEW account's master password (hidden) and get its file password.
+                4. Already there? A note whose exact copy is already in the account - same name (or a " (n)" copy of that name), same metadata and same content - is skipped. So running the import again (e.g. after a failure) adds only what is missing, never anything twice. Nothing left to add: "Nothing to import: every note is already there.", exit 0.
+                5. Show the account's e-mail address and the counts and ask "Add these N note(s) to <account>? (y/N)". Anything but y / yes: "Nothing imported.", exit 0.
+                6. Create each note in the account's Entries folder: the same name - " (1)", " (2)"... before the extension if taken -, the same metadata, the same content, encrypted (verified) with the NEW account's file password. Never change or delete anything that is there. A note Drive refuses is listed as FAILED, the others are still added, exit 1 ("run the import again to add them").
+            }
         }
     }
 

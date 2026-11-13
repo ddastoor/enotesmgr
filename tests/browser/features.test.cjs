@@ -2,7 +2,7 @@
 // Usage: node features.test.cjs <baseUrl>   (normally via ../run-all.mjs)
 const {
     chromium, fs, BASE, FOLDER, drive, children, folderByName, parseMultipart, driveLog, driveRoute, GIS_STUB,
-    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload,
+    ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, recoveryFiles, readDownload, openSearch,
 } = require("./lib/harness.cjs");
 const path = require("path");
 const { pathToFileURL } = require("url");
@@ -92,7 +92,7 @@ const TXT = Buffer.from("just some text, no magic number");
     await modal(page, "new name").locator("input").fill("photo.png");
     await clickModal(page, "new name", "OK"); await status();
     ok([...drive.values()].some((f) => f.name === "photo.png") && await page.inputValue("#file-select") === "photo.png", "rename");
-    await page.click("#tb-search");
+    await openSearch(page);
     await page.fill(".search-input", "ban"); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter"); await status();
     ok(await page.inputValue("#file-select") === "bank", "search selects the note");
     await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type(" extra");
@@ -130,7 +130,7 @@ const TXT = Buffer.from("just some text, no magic number");
     await clickModal(page, "save the current note", "Cancel");
     ok(await page.inputValue("#file-select") === "bank" && (await editorText()).includes("CANCEL3"), "Cancel: stays on the note, dropdown put back, edits kept");
     // via search -> same prompt
-    await page.click("#tb-search");
+    await openSearch(page);
     await page.fill(".search-input", "second"); await page.press(".search-input", "Enter"); await page.keyboard.press("Enter");
     await clickModal(page, "save the current note", "Yes"); await status();
     await page.selectOption("#file-select", "bank"); await status();
