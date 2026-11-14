@@ -212,14 +212,46 @@ function cli(cwd, args, input, driveFile) {
     }
     await logout(page);
 
-    console.log("6. Recovery codes: the old ones no longer work, the new ones do");
+    console.log("6. Recovery codes: all the new ones are valid, the old ones open nothing; a reset with a new code works");
+    // In Drive: every new code opens its own recovery file, holding the NEW file password - the rotation's
+    // put-back left the set-up's recovery files alone (none deleted, none changed); no old code opens any.
+    const CODE = /^\d{16}$/, oldList = oldCodes.filter((c) => CODE.test(c)), newList = newCodes.filter((c) => CODE.test(c));
+    const recFolderId = fileByName("Recovery").id;
+    const recFiles = () => [...drive.values()].filter((f) => f.parents.includes(recFolderId));
+    const fpIn = (content, code) => { const t = tryDec(content, code); try { return t && JSON.parse(t).file_password; } catch { return null; } };
+    const fileOf = (code, files) => files.find((f) => fpIn(f.content, code) === newFp);
+    const opened = new Set(newList.map((c) => (fileOf(c, recFiles()) || {}).id).filter(Boolean));
+    ok(newList.length === 10 && recFiles().length === 10 && opened.size === 10,
+        `all ${newList.length} new recovery codes are valid: each opens its own recovery file in Drive (${opened.size} of ${recFiles().length}), which holds the NEW file password`);
+    ok(oldList.length === 10 && oldList.every((c) => recFiles().every((f) => tryDec(f.content, c) === null)), "none of the 10 old codes opens any recovery file");
+    // In the app: an old code is refused; a new one resets the master password, and everything opens after it.
     await login(page); await unlockInput(page, oldCodes[0]);
     await page.waitForFunction(() => document.querySelector("#mp-error").textContent === "Invalid recovery code", null, { timeout: 30000 });
     ok(true, "an old recovery code: 'Invalid recovery code'");
-    await unlockInput(page, newCodes[0]);
+    const used = newList[3];
+    await unlockInput(page, used);
     await page.waitForSelector("#rmp-pwd", { timeout: 30000 });
-    ok(true, "a new recovery code opens the reset page");
-    await page.click("#rmp-cancel"); await page.waitForSelector("#login-btn");
+    await page.fill("#rmp-pwd", "ResetPass789"); await page.fill("#rmp-pwd2", "ResetPass789"); await page.click("#rmp-reset");
+    await clickModal(page, "Master password reset", "OK");
+    await page.waitForSelector("#login-btn");
+    ok(fpOf("ResetPass789") === newFp, "a new recovery code resets the master password (the file password stays the new one)");
+    await login(page); await unlockInput(page, "ResetPass789"); await onMain(page);
+    await page.waitForFunction((n) => [...document.querySelectorAll("#file-select option")].filter((o) => o.textContent).length >= n, labelsA.length, { timeout: 30000 }).catch(() => {});
+    await status();
+    // A normal and a sensitive note holding real samples (not 's-text', edited in step 5).
+    const withMedia = (x) => (x.body ? M.mediaOf(x.body).length > 0 : true);
+    const probe = [NOTES.find((x) => !x.pw && withMedia(x)), NOTES.find((x) => x.pw && x.name !== "s-text" && withMedia(x))];
+    const afterReset = [];
+    for (const n of probe) {
+        const d = await download(n.name, n.pw);
+        const why = M.vsSamples(n, await M.look(page), d);
+        if (Buffer.compare(d.bytes, inA[n.name].bytes) !== 0 || why) afterReset.push(`${n.name}: ${why || "Download differs from before"}`);
+    }
+    ok(afterReset.length === 0, `after the reset, logged in with the new master password: '${probe[0].name}' and '${probe[1].name}' (with its note password) open and download exactly as before - still exactly their real sample files` +
+        (afterReset.length ? `\n      ${afterReset.join("\n      ")}` : ""));
+    await logout(page);
+    const left = recFiles();
+    ok(!fileOf(used, left) && newList.filter((c) => c !== used).every((c) => fileOf(c, left)), "the code used for the reset is used up; the other 9 new codes still open their files");
 
     ok(page.cspViolations.length === 0, "no CSP violations");
     await page.context().close();
