@@ -1,8 +1,8 @@
 // End to end: moving all notes to another account with the export CLI
 // ('-m export' from account A, '-m import' into account B).
-// Account A makes every kind of note in the app (normal and sensitive: text,
-// text with pictures / audio, uploads - also one without an extension and an
-// .html file); the CLI exports them; a brand-new account B is set up in the app
+// Account A makes every kind of note in the app from REAL sample files (normal and
+// sensitive: text, text with real pictures and audio clips, uploads - pictures,
+// one without an extension, PDF, video, audio, an .html file); the CLI exports them; a brand-new account B is set up in the app
 // (with a note whose name clashes); the CLI imports them into B. Then, logged in
 // as B, every note must be exactly as in A - the same stored metadata (dates,
 // type, sensitive) and content - and show, open (sensitive ones with their own
@@ -14,33 +14,35 @@ const path = require("path");
 const os = require("os");
 const { spawnSync } = require("child_process");
 const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 const ROOT = path.join(__dirname, "..", "..");
 const CLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
 const FAKEFETCH = path.join(ROOT, "tests", "cli", "fakefetch.cjs");
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-transfer-e2e-"));
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
-const MP3 = Buffer.from("ID3fakeaudio-for-tests");
-const HTMLFILE = Buffer.from("<html><body><p>an uploaded web page</p></body></html>");
 const PREFIX = "<<eNotesMgr-sensitive-note-v1>>";
 const LOCK = " \u{1F512}";
 const MASTER_A = "MasterA123", MASTER_B = "MasterB456";
 
-// A's notes. view: what the note area shows once opened.
+// A's notes, from REAL sample files (tests/lib/media.cjs). body: a rich text note's typed text, pictures and
+// clips in order; file: the sample uploaded. view: what the note area shows once opened.
+const { T, I, A } = M;
 const NOTES = [
-    { name: "plain-text", kind: "new", text: "Plain text PIN 1111 café ✓", view: "editor" },
-    { name: "rich", kind: "new", text: "Rich note with pictures", images: [PNG, GIF], audio: true, view: "editor" },
-    { name: "photo.png", kind: "upload", file: PNG, mime: "image/png", view: "image" },
-    { name: "scan", kind: "upload", file: PNG, mime: "", view: "image" }, // no extension: labelled by the browser, typed by content
-    { name: "page.html", kind: "upload", file: HTMLFILE, mime: "text/html", view: "download-message" },
-    { name: "doc.pdf", kind: "upload", file: PDF, mime: "application/pdf", view: "download-message" },
-    { name: "s-text", kind: "new", pw: "SecretText1", text: "Secret PIN 2222 ✓", view: "editor" },
-    { name: "s-rich", kind: "new", pw: "SecretRich2", text: "Secret with a picture", images: [GIF], view: "editor" },
-    { name: "s-photo.png", kind: "upload", pw: "SecretPhoto3", file: PNG, mime: "image/png", view: "image" },
-    { name: "s-noext", kind: "upload", pw: "SecretNoExt4", file: GIF, mime: "", view: "image" },
-    { name: "s-doc.pdf", kind: "upload", pw: "SecretDoc55", file: PDF, mime: "application/pdf", view: "download-message" },
+    { name: "plain-text", kind: "new", body: [T("Plain text PIN 1111 café ✓")], view: "editor" },
+    { name: "rich", kind: "new", body: [T("Rich note with pictures "), I("photo.jpg"), I("anim.gif"), T(" and clips "), A("voice.mp3"), A("clip.ogg"), T(" end")], view: "editor" },
+    { name: "photo.png", kind: "upload", file: "picture.png", mime: "image/png", view: "image" },
+    { name: "scan", kind: "upload", file: "photo.jpg", mime: "", view: "image" }, // no extension: labelled by the browser, typed by content
+    { name: "page.html", kind: "upload", file: "page.html", mime: "text/html", view: "download-message" },
+    { name: "doc.pdf", kind: "upload", file: "doc.pdf", mime: "application/pdf", view: "download-message" },
+    { name: "movie.mp4", kind: "upload", file: "movie.mp4", mime: "video/mp4", view: "download-message" },
+    { name: "voice.mp3", kind: "upload", file: "voice.mp3", mime: "audio/mpeg", view: "audio" },
+    { name: "s-text", kind: "new", pw: "SecretText1", body: [T("Secret PIN 2222 ✓")], view: "editor" },
+    { name: "s-rich", kind: "new", pw: "SecretRich2", body: [T("Secret with a picture "), I("pic.webp"), T(" and a clip "), A("tone.wav"), T(" end")], view: "editor" },
+    { name: "s-photo.png", kind: "upload", pw: "SecretPhoto3", file: "picture.png", mime: "image/png", view: "image" },
+    { name: "s-noext", kind: "upload", pw: "SecretNoExt4", file: "anim.gif", mime: "", view: "image" },
+    { name: "s-doc.pdf", kind: "upload", pw: "SecretDoc55", file: "doc.pdf", mime: "application/pdf", view: "download-message" },
+    { name: "s-movie.webm", kind: "upload", pw: "SecretMovie6", file: "movie.webm", mime: "video/webm", view: "download-message" },
+    { name: "s-clip.m4a", kind: "upload", pw: "SecretClip77", file: "clip.m4a", mime: "audio/mp4", view: "audio" },
 ];
 
 function cli(args, input, driveFile) {
@@ -103,7 +105,7 @@ function cli(args, input, driveFile) {
     for (const n of NOTES) {
         if (n.kind === "upload") {
             const [fc] = await Promise.all([page.waitForEvent("filechooser"), page.click(n.pw ? "#tb-upload-sensitive" : "#tb-upload")]);
-            await fc.setFiles({ name: n.name, mimeType: n.mime, buffer: n.file });
+            await fc.setFiles({ name: n.name, mimeType: n.mime, buffer: M.MEDIA[n.file].bytes });
         } else {
             await page.click(n.pw ? "#tb-new-sensitive" : "#tb-new");
             const m = modal(page, n.pw ? "new sensitive note" : "Enter a name for the new note");
@@ -111,27 +113,17 @@ function cli(args, input, driveFile) {
         }
         if (n.pw) { const m = modal(page, "Choose an extra password"); await m.waitFor(); await fillPw(m, n.pw, n.pw); await clickModal(page, "Choose an extra password", "Create"); }
         await waitSel(n.name); await status();
-        if (n.kind === "new") {
-            await page.click("#editor"); await page.keyboard.type(n.text + " ");
-            for (const img of n.images || []) {
-                const c = await page.locator("#editor .media-embed").count();
-                await page.setInputFiles("#hidden-ins-image", { name: "i.png", mimeType: "image/png", buffer: img });
-                await page.waitForFunction((x) => document.querySelectorAll("#editor .media-embed").length > x, c);
-            }
-            if (n.audio) {
-                const c = await page.locator("#editor .media-embed").count();
-                await page.setInputFiles("#hidden-ins-audio", { name: "a.mp3", mimeType: "audio/mpeg", buffer: MP3 });
-                await page.waitForFunction((x) => document.querySelectorAll("#editor .media-embed").length > x, c);
-            }
-            await page.keyboard.type(" end"); await page.click("#tb-save"); await status();
-        }
+        if (n.kind === "new") { await M.writeBody(page, n.body); await page.click("#tb-save"); await status(); }
     }
-    const inA = {};
+    const inA = {}, offA = [];
     for (const n of NOTES) {
         const d = await download(n.name, n.pw);
-        inA[n.name] = { ...d, view: await view(), html: n.kind === "new" ? await editorHtml() : null };
+        const l = await M.look(page);
+        inA[n.name] = { ...d, view: l.view, looks: M.looksOf(l), html: n.kind === "new" ? await editorHtml() : null };
+        const why = M.vsSamples(n, l, d); if (why) offA.push(why);
     }
     ok(NOTES.every((n) => inA[n.name].view === n.view), "in A every note shows in its viewer: " + NOTES.map((n) => `${n.name}=${inA[n.name].view}`).join(", "));
+    ok(offA.length === 0, "in A every note is exactly its real sample files: pictures decode at their sizes, clips play for their lengths, all byte for byte (SHA-256)" + (offA.length ? `\n      ${offA.join("\n      ")}` : ""));
     await logout(page);
     const fpA = fpOf(MASTER_A);
     const storedA = Object.fromEntries(NOTES.map((n) => { const f = fileByName(n.name); return [n.name, { appProperties: f.appProperties, mimeType: f.mimeType, content: C.decryptData(f.content, fpA) }]; }));
@@ -177,12 +169,13 @@ function cli(args, input, driveFile) {
     ok(JSON.stringify(labels) === JSON.stringify(want), "file list: B's note + all of A's, sensitive ones with a padlock: " + labels.join(" | "));
     for (const n of NOTES) {
         const d = await download(nameInB(n), n.pw);
-        const v = await view();
+        const l = await M.look(page), v = l.view;
         const html = n.kind === "new" ? await editorHtml() : null;
         const a = inA[n.name];
         const bytes = nameInB(n) === n.name ? d.bytes : Buffer.from(d.bytes.toString().replace(`<title>${nameInB(n)}</title>`, `<title>${n.name}</title>`));
-        ok(v === n.view && html === a.html && Buffer.compare(bytes, a.bytes) === 0 && d.filename === a.filename.replace(n.name, nameInB(n)),
-            `'${nameInB(n)}'` + (n.pw ? " (with its note password)" : "") + `: shows as ${v}` + (html !== null ? ", same content" : "") + ", Download identical to A's");
+        const why = M.vsSamples({ ...n, name: nameInB(n) }, l, { ...d, bytes });
+        ok(v === n.view && M.looksOf(l) === a.looks && html === a.html && Buffer.compare(bytes, a.bytes) === 0 && d.filename === a.filename.replace(n.name, nameInB(n)) && !why,
+            `'${nameInB(n)}'` + (n.pw ? " (with its note password)" : "") + `: shows as ${v}` + (l.srcs.length ? ` [${M.looksOf(l)}]` : "") + (html !== null ? ", same content" : "") + ", Download identical to A's - exactly its real sample files" + (why ? `\n      ${why}` : ""));
         if (n.view !== "editor") ok(await page.isDisabled("#tb-save"), `'${nameInB(n)}': Save disabled, as for any upload`);
     }
     await open("s-text", "SecretText1");

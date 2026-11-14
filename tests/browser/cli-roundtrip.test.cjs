@@ -1,7 +1,8 @@
 // App -> export CLI consistency: data created by the CURRENT app (notes, uploads,
 // renames, deletes, recovery codes, a master-password reset) is exported by the
 // CURRENT export CLI (www/enotesmgr-export-cli.js) in every mode, and the CLI's
-// files are byte-for-byte what the app's own Download button gives.
+// files are byte-for-byte what the app's own Download button gives. Made from REAL sample files
+// (tests/lib/media.cjs): a picture and an audio clip in a rich text note, an uploaded picture, PDF and video.
 // Usage: node cli-roundtrip.test.cjs <baseUrl>   (normally via ../run-all.mjs)
 const {
     chromium, fs, drive, ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout, readDownload,
@@ -9,13 +10,15 @@ const {
 const path = require("path");
 const os = require("os");
 const { spawnSync } = require("child_process");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 const ROOT = path.join(__dirname, "..", "..");
 const CLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
 const FAKEFETCH = path.join(ROOT, "tests", "cli", "fakefetch.cjs");
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-roundtrip-"));
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+// The notes the app ends up with, and the sample each upload is.
+const FILES = ["bank.html", "photo.png", "doc.pdf", "movie.mp4"];
+const UPLOADED = { "photo.png": "picture.png", "doc.pdf": "doc.pdf", "movie.mp4": "movie.mp4" };
 
 // Write the fake Drive (as the app left it) where the CLI's fake fetch reads it.
 function dumpDrive() {
@@ -59,13 +62,12 @@ const status = (page) => page.waitForFunction(() => { const s = document.querySe
         await page.click("#tb-save"); await status(page);
     };
     await newNote("bank", "PIN 4242 café ✓ ");
-    await page.setInputFiles("#hidden-ins-image", { name: "a.png", mimeType: "image/png", buffer: PNG });
-    await page.waitForSelector("#editor .media-embed img");
+    await M.writeBody(page, [M.I("photo.jpg"), M.T(" and a voice clip "), M.A("voice.mp3")]);
     await page.click("#tb-save"); await status(page);
     await newNote("temp", "to be deleted");
     await page.click("#tb-delete"); await clickModal(page, "cannot be undone", "OK"); await status(page);
-    for (const [name, mime, buf] of [["pic.png", "image/png", PNG], ["doc.pdf", "application/pdf", PDF]]) {
-        await page.setInputFiles("#hidden-upload", { name, mimeType: mime, buffer: buf });
+    for (const [name, f] of [["pic.png", "picture.png"], ["doc.pdf", "doc.pdf"], ["movie.mp4", "movie.mp4"]]) {
+        await page.setInputFiles("#hidden-upload", { name, mimeType: M.MEDIA[f].mime, buffer: M.MEDIA[f].bytes });
         await page.waitForFunction((n) => document.querySelector("#file-select").value === n, name); await status(page);
     }
     await page.selectOption("#file-select", "pic.png"); await status(page);
@@ -74,34 +76,38 @@ const status = (page) => page.waitForFunction(() => { const s = document.querySe
     await clickModal(page, "new name", "OK"); await status(page);
     // The app's own Download of each note, to compare with the CLI byte for byte.
     const appDownload = {};
-    for (const name of ["bank", "photo.png", "doc.pdf"]) {
+    for (const name of ["bank", "photo.png", "doc.pdf", "movie.mp4"]) {
         await page.selectOption("#file-select", name); await status(page);
         const [d] = await Promise.all([page.waitForEvent("download"), page.click("#tb-download")]);
         appDownload[d.suggestedFilename()] = fs.readFileSync(await d.path());
     }
-    ok(Object.keys(appDownload).join() === "bank.html,photo.png,doc.pdf", "app created: bank (text + image), photo.png (renamed upload), doc.pdf; 'temp' deleted");
+    ok(Object.keys(appDownload).join() === FILES.join(), "app created: bank (text + picture + audio clip), photo.png (renamed upload), doc.pdf, movie.mp4; 'temp' deleted");
+    ok(Object.entries(UPLOADED).every(([f, sample]) => M.sha(appDownload[f]) === M.MEDIA[sample].sha256), "the app's Download of each upload is exactly the real file (SHA-256)");
     await logout(page);
     let driveFile = dumpDrive();
 
     console.log("2. Online export (-m on) of the app's data");
     let r = cli(["-m", "on", "-t", "GOODTOKEN"], "Master123\n", driveFile);
     ok(r.code === 0, "CLI succeeds");
-    ok(Object.keys(r.files).sort().join() === "bank.html,doc.pdf,photo.png", "exports exactly the 3 notes the app has (deleted one absent, renamed name used)");
-    ok(["bank.html", "photo.png", "doc.pdf"].every((f) => r.files[f] && Buffer.compare(r.files[f], appDownload[f]) === 0),
+    ok(Object.keys(r.files).sort().join() === [...FILES].sort().join(), "exports exactly the 4 notes the app has (deleted one absent, renamed name used)");
+    ok(FILES.every((f) => r.files[f] && Buffer.compare(r.files[f], appDownload[f]) === 0),
         "every exported file is byte-for-byte the app's own Download of that note");
-    ok(r.files["bank.html"].toString().includes("PIN 4242 café ✓") && r.files["bank.html"].toString().includes("data:image/png"), "bank.html has the text and the inserted image");
-    ok(Buffer.compare(r.files["photo.png"], PNG) === 0 && Buffer.compare(r.files["doc.pdf"], PDF) === 0, "uploads come back as the original bytes");
+    {
+        const html = r.files["bank.html"].toString(), jpg = html.indexOf(M.MEDIA["photo.jpg"].b64), mp3 = html.indexOf(M.MEDIA["voice.mp3"].b64);
+        ok(html.includes("PIN 4242 café ✓") && jpg > 0 && mp3 > jpg, "bank.html has the text, the inserted picture and the audio clip - byte for byte, in order");
+    }
+    ok(Object.entries(UPLOADED).every(([f, sample]) => M.sha(r.files[f]) === M.MEDIA[sample].sha256), "uploads come back as the original files (picture, PDF, video by SHA-256)");
     r = cli(["-m", "on", "-t", "GOODTOKEN"], "WrongPass1\n", driveFile);
     ok(r.code === 1 && r.out.includes("Could not decrypt config.json"), "wrong master password: clear error");
 
     console.log("3. Mirror (-x) of the app's Drive tree, then offline export (-m off) from it");
     r = cli(["-m", "on", "-t", "GOODTOKEN", "-x"], "", driveFile);
     const mirrored = Object.keys(r.files);
-    ok(r.code === 0 && mirrored.length === 3 + 2 + 10, `mirror: ${mirrored.length} files = 3 notes + config + settings + 10 recovery codes`);
+    ok(r.code === 0 && mirrored.length === 4 + 2 + 10, `mirror: ${mirrored.length} files = 4 notes + config + settings + 10 recovery codes`);
     ok(mirrored.filter((f) => /Recovery[/\\]recovery-[0-9a-f-]{36}$/.test(f)).length === 10, "recovery files mirrored under their random names");
     const mirrorRoot = fs.readdirSync(r.dir).find((d) => d.startsWith("eNotes Manager_"));
     const off = cli(["-m", "off", "-c", path.join(r.dir, mirrorRoot, "Config", "config.json"), "-d", path.join(r.dir, mirrorRoot, "Entries")], "Master123\n");
-    ok(off.code === 0 && ["bank.html", "photo.png", "doc.pdf"].every((f) => off.files[f] && Buffer.compare(off.files[f], appDownload[f]) === 0),
+    ok(off.code === 0 && FILES.every((f) => off.files[f] && Buffer.compare(off.files[f], appDownload[f]) === 0),
         "offline export from the mirror gives the same files" + (off.code === 0 ? "" : ` (exit ${off.code}: ${off.out.slice(-300)})`));
 
     console.log("4. After a master-password reset in the app (recovery code)");
@@ -113,7 +119,7 @@ const status = (page) => page.waitForFunction(() => { const s = document.querySe
     await page.waitForSelector("#login-btn");
     driveFile = dumpDrive();
     r = cli(["-m", "on", "-t", "GOODTOKEN"], "NewPass789\n", driveFile);
-    ok(r.code === 0 && ["bank.html", "photo.png", "doc.pdf"].every((f) => r.files[f] && Buffer.compare(r.files[f], appDownload[f]) === 0),
+    ok(r.code === 0 && FILES.every((f) => r.files[f] && Buffer.compare(r.files[f], appDownload[f]) === 0),
         "CLI works with the NEW master password, same files");
     r = cli(["-m", "on", "-t", "GOODTOKEN"], "Master123\n", driveFile);
     ok(r.code === 1, "and the OLD master password no longer works in the CLI either");

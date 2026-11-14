@@ -18,6 +18,7 @@ import { spawnSync } from "child_process";
 import fs from "fs"; import path from "path"; import os from "os";
 import { fileURLToPath, pathToFileURL } from "url";
 import { PARTS } from "./transfer.parts.mjs";
+import M from "../lib/media.cjs"; // real sample files (tests/fixtures/media)
 
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
@@ -37,22 +38,22 @@ const S = await imp("www/js/lib/sensitiveNote.js");
 const tryDec = (c, p) => { try { return C.decryptData(c, p); } catch { return null; } };
 
 // ---------------- the two accounts ----------------
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-const GIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF\n").toString("base64");
+// Real sample files (tests/lib/media.cjs), as base64 / data: URLs.
+const B64 = (f) => M.MEDIA[f].b64;
 const BIG = Buffer.alloc(3 * 1024 * 1024); for (let i = 0; i < BIG.length; i++) BIG[i] = (i * 2654435761) >>> 24;
-const embed = (b64, mime) => `<span class="media-embed" contenteditable="false"><img src="data:${mime};base64,${b64}"></span>`;
+const embed = (f) => `<span class="media-embed" contenteditable="false"><img src="${M.MEDIA[f].dataUrl}"></span>`;
 const meta = (created, modified, how, type, sensitive) => ({ DateTimeCreated: created, DateTimeModified: modified, CreationMethod: how, FileType: type, ...(sensitive ? { Sensitive: "yes" } : {}) });
 const sens = (content, pw) => S.wrapSensitive(C.encryptVerified(content, pw));
 // [name, stored content (after the file-password layer), appProperties]
 const A_NOTES = [
     ["plain-text", "<div>Plain PIN-1111 café ✓ &lt;tag&gt;</div><div><br></div>", meta("2024-03-01T09:15", "2025-07-04T18:30", "new", "richtext")],
-    ["rich", `<div><b>Bold</b></div>${embed(PNG, "image/png")} ${embed(GIF, "image/gif")}<span class="media-embed" contenteditable="false"><audio controls="" src="data:audio/mpeg;base64,SUQzYXVkaW8="></audio></span>`, meta("2024-03-02T10:00", "2024-03-02T10:05", "new", "richtext")],
-    ["photo.png", `data:image/png;base64,${PNG}`, meta("2024-04-01T08:00", "2024-04-01T08:00", "upload", "image")],
+    ["rich", `<div><b>Bold</b></div>${embed("picture.png")} ${embed("anim.gif")}<span class="media-embed" contenteditable="false"><audio controls="" src="${M.MEDIA["voice.mp3"].dataUrl}"></audio></span>`, meta("2024-03-02T10:00", "2024-03-02T10:05", "new", "richtext")],
+    ["photo.png", M.MEDIA["picture.png"].dataUrl, meta("2024-04-01T08:00", "2024-04-01T08:00", "upload", "image")],
     // Uploaded without an extension: the browser labelled it octet-stream; its type (image) came from its content.
-    ["scan", `data:application/octet-stream;base64,${PNG}`, meta("2024-04-02T08:00", "2024-04-02T08:00", "upload", "image")],
-    ["page.html", `data:text/html;base64,${Buffer.from("<html><body>an uploaded page</body></html>").toString("base64")}`, meta("2024-04-03T08:00", "2024-04-03T08:00", "upload", "UNKNOWN")],
-    ["doc.pdf", `data:application/pdf;base64,${PDF}`, meta("2024-04-04T08:00", "2024-04-04T08:00", "upload", "application/pdf")],
+    ["scan", `data:application/octet-stream;base64,${B64("photo.jpg")}`, meta("2024-04-02T08:00", "2024-04-02T08:00", "upload", "image")],
+    ["page.html", M.MEDIA["page.html"].dataUrl, meta("2024-04-03T08:00", "2024-04-03T08:00", "upload", "UNKNOWN")],
+    ["doc.pdf", M.MEDIA["doc.pdf"].dataUrl, meta("2024-04-04T08:00", "2024-04-04T08:00", "upload", "application/pdf")],
+    ["movie.mp4", M.MEDIA["movie.mp4"].dataUrl, meta("2024-04-06T08:00", "2024-04-06T08:00", "upload", "video/mp4")],
     ["big.bin", `data:application/octet-stream;base64,${BIG.toString("base64")}`, meta("2024-04-05T08:00", "2024-04-05T08:00", "upload", "UNKNOWN")],
     ["a:b*c? ✓", "<div>odd name</div>", meta("2024-05-01T00:00", "2024-05-01T00:00", "new", "richtext")],
     ["empty", "", meta("2024-05-02T00:00", "2024-05-02T00:00", "new", "richtext")],
@@ -60,8 +61,8 @@ const A_NOTES = [
     ["dup", "<div>first dup</div>", meta("2024-06-01T00:00", "2024-06-01T00:00", "new", "richtext")],
     ["dup", "<div>second dup</div>", meta("2024-06-02T00:00", "2024-06-02T00:00", "new", "richtext")],
     ["s-text", sens("<div>SECRET-1 PIN-2222</div>", "SecretText1"), meta("2024-07-01T00:00", "2024-07-09T00:00", "new", "richtext", true)],
-    ["s-photo.png", sens(`data:image/png;base64,${PNG}`, "SecretPhoto2"), meta("2024-07-02T00:00", "2024-07-02T00:00", "upload", "image", true)],
-    ["s-noext", sens(`data:application/octet-stream;base64,${GIF}`, "SecretNoExt3"), meta("2024-07-03T00:00", "2024-07-03T00:00", "upload", "image", true)],
+    ["s-photo.png", sens(M.MEDIA["picture.png"].dataUrl, "SecretPhoto2"), meta("2024-07-02T00:00", "2024-07-02T00:00", "upload", "image", true)],
+    ["s-noext", sens(`data:application/octet-stream;base64,${B64("anim.gif")}`, "SecretNoExt3"), meta("2024-07-03T00:00", "2024-07-03T00:00", "upload", "image", true)],
     ["s:odd?", sens("<div>SECRET-4</div>", "SecretOdd44"), meta("2024-07-04T00:00", "2024-07-04T00:00", "new", "richtext", true)],
     ["shared", "<div>the same in both accounts</div>", meta("2024-08-01T00:00", "2024-08-01T00:00", "new", "richtext")],
     // Metadata keys this test doesn't know about must travel too (nothing is left out).
@@ -101,7 +102,9 @@ function run(args, input, { drive = null, env = {}, preload = [], cwd = null } =
 }
 const transferIn = (parent) => fs.readdirSync(parent).filter((d) => d.startsWith("eNotes Manager Transfer_")).map((d) => path.join(parent, d));
 const isPrivate = (dir) => process.platform === "win32" || ((fs.statSync(dir).mode & 0o777) === 0o700 && fs.readdirSync(dir).every((f) => (fs.statSync(path.join(dir, f)).mode & 0o777) === 0o600));
-const LEAKS = ["PIN-1111", "SECRET-", "café", "first dup", "B's own", PNG.slice(0, 20), "plain-text", "photo.png", "a:b*c?", "s-text"];
+const LEAKS = ["PIN-1111", "SECRET-", "café", "first dup", "B's own", "plain-text", "photo.png", "a:b*c?", "s-text",
+    // any sample's base64 (as in a data: URL)
+    ...["picture.png", "anim.gif", "photo.jpg", "voice.mp3", "doc.pdf", "page.html", "movie.mp4"].map((f) => { const b = B64(f), at = Math.floor(b.length / 8) * 4; return b.slice(at, at + 32); })];
 
 // ENOTES_TEST_PART: run just one part (the list: ./transfer.parts.mjs; tests/run-all.mjs runs them
 // at once). Every part works with the same transfer folder, made below. Unset: all, in order.
@@ -249,7 +252,7 @@ if (inPart("import")) {
         "taken names: 'plain-text (1)'; A's two 'dup' notes: 'dup' + 'dup (1)'; 's:odd?' keeps its exact name");
     const sNo = bEntries(r.after).find((f) => f.name === "s-noext");
     ok(sNo.appProperties.FileType === "image" && sNo.appProperties.CreationMethod === "upload" && sNo.appProperties.Sensitive === "yes"
-        && C.decryptData(S.unwrapSensitive(C.decryptData(sNo.content, FP_B)), "SecretNoExt3") === `data:application/octet-stream;base64,${GIF}`,
+        && C.decryptData(S.unwrapSensitive(C.decryptData(sNo.content, FP_B)), "SecretNoExt3") === `data:application/octet-stream;base64,${B64("anim.gif")}`,
         "a sensitive picture without an extension keeps its exact type (image) and its exact content - nothing guessed");
     const pg = bEntries(r.after).find((f) => f.name === "page.html");
     ok(pg.appProperties.CreationMethod === "upload" && C.decryptData(pg.content, FP_B).startsWith("data:text/html;base64,"), "an uploaded .html file stays an uploaded file");
@@ -340,7 +343,7 @@ if (inPart("rest")) {
     console.log("\n6. Usage");
     for (const [label, args] of [["-m bogus", ["-m", "bogus"]], ["no -m", []]]) {
         const u = run(args, "");
-        ok(u.code === 1 && u.out.includes("'on', 'off', 'sensitive', 'export' or 'import'") && u.out.includes("-m export") && u.out.includes("-m import"), `${label}: the usage lists -m export / -m import`);
+        ok(u.code === 1 && u.out.includes("'on', 'off', 'sensitive', 'export', 'import' or 'rotate'") && u.out.includes("-m export") && u.out.includes("-m import"), `${label}: the usage lists -m export / -m import`);
     }
     const help = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" }).stdout;
     ok(["-m export", "-m import", "eNotes Manager Transfer_<date>", "master password of the OLD", "already there", "Move all your notes to another account"].every((x) => help.includes(x)), "--help documents -m export / -m import");

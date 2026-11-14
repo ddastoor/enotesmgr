@@ -10,7 +10,7 @@
 //     same downloaded recovery-codes file - with the same Drive calls;
 //   - the main page only gains the two padlock buttons, the menu only gains
 //     'Decrypt Sensitive File' (PC), the '?' help only gains Alt+N / Alt+U;
-//   - the same normal-note usage (New, typing, embedded picture, Save, Upload,
+//   - the same normal-note usage (New, typing, a real embedded picture and audio clip, Save, Upload of a real PDF,
 //     Rename, Delete, Settings) stores byte-identical notes with identical
 //     metadata (no "Sensitive" key anywhere) and identical Downloads;
 //   - data made by either version opens unchanged in the other.
@@ -21,14 +21,14 @@ const os = require("os");
 const net = require("net");
 const { spawn, spawnSync } = require("child_process");
 const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 const ROOT = path.join(__dirname, "..", "..");
 const NEW_URL = process.argv[2];
 const PRE_FEATURE_COMMIT = "0c53ab1"; // main before sensitive notes
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-new-user-"));
 const MASTER = "Master123";
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+const JPG = M.MEDIA["photo.jpg"], MP3 = M.MEDIA["voice.mp3"], PDF = M.MEDIA["doc.pdf"];
 // What a new user's setup (and normal use) runs: none of it may differ from main.
 // (Not www/js/pages/settings.js: changed on purpose since - while it re-reads the settings from
 // Drive they can't be changed, see settings.test.cjs. Its screen and what it saves are still
@@ -148,11 +148,14 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
         await modal(page, "Enter a name").locator("input").fill("first note");
         await clickModal(page, "Enter a name", "OK"); await page.status();
         await page.keyboard.type("My first note PIN 1234 café ✓ ");
-        await page.setInputFiles("#hidden-ins-image", { name: "a.png", mimeType: "image/png", buffer: PNG });
+        await page.setInputFiles("#hidden-ins-image", { name: "photo.jpg", mimeType: JPG.mime, buffer: JPG.bytes });
         await page.waitForSelector("#editor .media-embed img");
+        await page.keyboard.type(" a clip ");
+        await page.setInputFiles("#hidden-ins-audio", { name: "voice.mp3", mimeType: MP3.mime, buffer: MP3.bytes });
+        await page.waitForSelector("#editor .media-embed audio");
         await page.keyboard.type(" end");
         await page.keyboard.press("Control+s"); await page.status();
-        await page.setInputFiles("#hidden-upload", { name: "doc.pdf", mimeType: "application/pdf", buffer: PDF });
+        await page.setInputFiles("#hidden-upload", { name: "doc.pdf", mimeType: PDF.mime, buffer: PDF.bytes });
         await page.waitForFunction(() => document.querySelector("#file-select").value === "doc.pdf"); await page.status();
         await page.click("#tb-rename");
         await modal(page, "new name").locator("input").fill("renamed.pdf");
@@ -206,7 +209,12 @@ const freePort = () => new Promise((resolve) => { const s = net.createServer(); 
     same("settingsAfter", "saved settings identical");
     same("theme", "theme applied the same after login");
     same("options", "file list identical (no padlocks)");
-    same("downloads", "Downloads identical (rich text with picture, renamed upload)");
+    same("downloads", "Downloads identical (rich text with picture and audio clip, renamed upload)");
+    {
+        const html = Buffer.from(B.downloads["first note"][1], "base64").toString("utf8"), jpg = html.indexOf(JPG.b64), mp3 = html.indexOf(MP3.b64);
+        ok(jpg > 0 && mp3 > jpg && M.sha(Buffer.from(B.downloads["renamed.pdf"][1], "base64")) === PDF.sha256,
+            "the Downloads hold the real picture and clip byte for byte, in order, and the PDF is exactly the uploaded file (SHA-256)");
+    }
     same("notes", "stored notes decrypt to byte-identical content");
     same("usedTree", "after normal use the Drive tree is identical: names, metadata, sizes");
     same("reopened", "reopened note identical");

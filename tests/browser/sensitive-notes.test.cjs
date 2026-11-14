@@ -14,14 +14,16 @@ const path = require("path");
 const os = require("os");
 const { spawnSync } = require("child_process");
 const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 const ROOT = path.join(__dirname, "..", "..");
 const CLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
 const FAKEFETCH = path.join(ROOT, "tests", "cli", "fakefetch.cjs");
 const PRE_FEATURE_COMMIT = "0c53ab1"; // last commit before sensitive notes
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-sensitive-"));
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+// Real sample files: a picture (PNG, 200x150) and a two-page PDF.
+const PNG = M.MEDIA["picture.png"].bytes;
+const PDF = M.MEDIA["doc.pdf"].bytes;
 const PREFIX = "<<eNotesMgr-sensitive-note-v1>>";
 const LOCK = " \u{1F512}";
 const NOTE_PW = "NotePass1";
@@ -358,6 +360,7 @@ function cli(cliPath, args, input, driveFile) {
         "metadata: CreationMethod=upload, FileType=image (by magic number), Sensitive=yes");
     ok(outer("pic.png").startsWith(PREFIX) && (inner("pic.png", PIC_PW) || "").startsWith("data:image/png;base64,"), "Drive: the image is locked with its note password from the first write");
     ok(await page.locator("#media-viewer img").count() === 1 && await optionText("pic.png") === "pic.png" + LOCK, "shown in the image viewer, listed as 'pic.png 🔒'");
+    { const l = await M.look(page); ok(M.looksOf(l) === M.expectedLook("picture.png"), `the picture really shows: it decodes at its size, byte for byte the original (${M.looksOf(l)})`); }
     await open("plain");
     await open("pic.png", PIC_PW);
     ok(await page.locator("#media-viewer img").count() === 1, "reopened with its password: the image shows");

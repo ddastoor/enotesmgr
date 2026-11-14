@@ -15,6 +15,7 @@ export const INPUTS = [
     "../../www/js/crypto/wasi-shim-vendor/dist/wasi-shim.js",
     "../../www/js/lib/noteExport.js",
     "../../www/js/lib/sensitiveNote.js",
+    "../../www/js/lib/meta.js",
     "export-cli.js",
 ].map((p) => resolve(here, p));
 

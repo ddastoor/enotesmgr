@@ -56,11 +56,12 @@ the owner says so.
   - Only test files: those suites, plus `verify`.
   - Only the export CLI (`src/export/`, `www/enotesmgr-export-cli.js`) with
     the app files unchanged: `verify`, `cli`, `sensitive`,
-    `cli-options`, `cli-transfer`, `cli-regression`, and the browser suites
-    that run the CLI: `cli-roundtrip`, `cli-matrix`, `sensitive-notes`,
-    `transfer`.
+    `cli-options`, `cli-transfer`, `cli-regression`, `cli-rotate`, and the
+    browser suites that run the CLI: `cli-roundtrip`, `cli-matrix`,
+    `sensitive-notes`, `transfer`, `rotate`, `lifecycle`.
   - Code shared by the app AND the CLI (`www/js/crypto/`,
-    `www/js/lib/noteExport.js`, `www/js/lib/sensitiveNote.js`): the full suite.
+    `www/js/lib/noteExport.js`, `www/js/lib/sensitiveNote.js`,
+    `www/js/lib/meta.js`): the full suite.
   - Any other app file in `www/`: all browser suites.
 - Always say which suites ran and passed, and which were skipped and why.
 

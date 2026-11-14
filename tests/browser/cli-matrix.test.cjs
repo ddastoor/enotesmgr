@@ -1,5 +1,5 @@
-// Export CLI x note kinds: every CLI mode run on data made by the current app,
-// for plain text notes and notes with embedded images, each both as a normal
+// Export CLI x note kinds: every CLI mode run on data made by the current app from REAL sample files
+// (tests/lib/media.cjs), for plain text notes and notes with embedded pictures and an audio clip, each both as a normal
 // note (file password only = single encrypted) and as a sensitive note (note
 // password + file password = double encrypted), plus a normal and a sensitive
 // upload. Normal notes must come out readable and byte-for-byte equal to the
@@ -18,25 +18,25 @@ const path = require("path");
 const os = require("os");
 const { spawnSync } = require("child_process");
 const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 const ROOT = path.join(__dirname, "..", "..");
 const CLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
 const FAKEFETCH = path.join(ROOT, "tests", "cli", "fakefetch.cjs");
 const NODE18 = path.join(ROOT, "tests", "cli", "node18sim.cjs");
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-cli-matrix-"));
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
 const PREFIX = "<<eNotesMgr-sensitive-note-v1>>";
 const MASTER = "Master123";
 
-// The six notes the app makes. text: what is typed; images: embedded in the text.
+// The six notes the app makes, from real sample files. text: what is typed; images: real pictures (and an
+// audio clip) embedded after it; upload: the real file uploaded.
 const NOTES = [
     { name: "plain-text", sensitive: false, text: "Plain text note PIN 1111 café ✓", images: [] },
-    { name: "plain-image", sensitive: false, text: "Plain note with images PIN 3333", images: [["a.png", "image/png", PNG], ["b.gif", "image/gif", GIF]] },
+    { name: "plain-image", sensitive: false, text: "Plain note with images PIN 3333", images: ["photo.jpg", "anim.gif", "voice.mp3"] },
     { name: "secret-text", sensitive: true, pw: "SecretText1", text: "Secret text note PIN 2222 café ✓", images: [] },
-    { name: "secret-image", sensitive: true, pw: "SecretImage1", text: "Secret note with images PIN 4444", images: [["a.png", "image/png", PNG], ["b.gif", "image/gif", GIF]] },
-    { name: "photo.png", sensitive: false, upload: PNG },
-    { name: "secret-photo.png", sensitive: true, pw: "SecretPhoto1", upload: PNG },
+    { name: "secret-image", sensitive: true, pw: "SecretImage1", text: "Secret note with images PIN 4444", images: ["picture.png", "pic.webp", "clip.ogg"] },
+    { name: "photo.png", sensitive: false, upload: "picture.png" },
+    { name: "secret-photo.png", sensitive: true, pw: "SecretPhoto1", upload: "picture.png" },
 ];
 const outName = (n) => n.sensitive ? n.name + ".sensitive" : (n.upload ? n.name : n.name + ".html");
 const ALL_OUT = NOTES.map(outName).sort().join();
@@ -92,7 +92,7 @@ const isPrivate = (r) => process.platform === "win32" || Object.entries(r.modes)
         if (n.upload) {
             const btn = n.sensitive ? "#tb-upload-sensitive" : "#tb-upload";
             const [fc] = await Promise.all([page.waitForEvent("filechooser"), page.click(btn)]);
-            await fc.setFiles({ name: n.name, mimeType: "image/png", buffer: n.upload });
+            await fc.setFiles({ name: n.name, mimeType: M.MEDIA[n.upload].mime, buffer: M.MEDIA[n.upload].bytes });
         } else {
             await page.click(n.sensitive ? "#tb-new-sensitive" : "#tb-new");
             const m = modal(page, n.sensitive ? "new sensitive note" : "Enter a name for the new note");
@@ -106,13 +106,8 @@ const isPrivate = (r) => process.platform === "win32" || Object.entries(r.modes)
         }
         await waitSelected(n.name); await status();
         if (!n.upload) {
-            await page.click("#editor"); await page.keyboard.type(n.text + " ");
-            for (const [fname, mime, buf] of n.images) {
-                const before = await page.locator("#editor .media-embed img").count();
-                await page.setInputFiles("#hidden-ins-image", { name: fname, mimeType: mime, buffer: buf });
-                await page.waitForFunction((c) => document.querySelectorAll("#editor .media-embed img").length > c, before);
-            }
-            await page.keyboard.type(" end.");
+            // Typed text, then the pictures (Insert Image) and the clip (Insert Audio), then more text.
+            await M.writeBody(page, [M.T(n.text + " "), ...n.images.map((f) => (M.MEDIA[f].type === "image" ? M.I(f) : M.A(f))), M.T(" end.")]);
             await page.click("#tb-save"); await status();
         }
     }
@@ -137,16 +132,23 @@ const isPrivate = (r) => process.platform === "win32" || Object.entries(r.modes)
     const outer = (n) => C.decryptData(fileByName(n.name).content, FP);
     for (const n of NOTES.filter((x) => !x.upload)) {
         const html = appDownload[n.name].bytes.toString();
-        ok(appDownload[n.name].filename === n.name + ".html" && html.includes(n.text)
-            && (!n.images.length || (html.includes("data:image/png;base64,") && html.includes("data:image/gif;base64,"))),
-            `${n.name}: the app's Download is a readable ${n.name}.html` + (n.images.length ? " with both embedded images" : ""));
+        let at = 0;
+        const inOrder = n.images.every((f) => { const i = html.indexOf(M.MEDIA[f].b64, at); if (i < 0) return false; at = i + M.MEDIA[f].b64.length; return true; });
+        ok(appDownload[n.name].filename === n.name + ".html" && html.includes(n.text) && inOrder,
+            `${n.name}: the app's Download is a readable ${n.name}.html` + (n.images.length ? ` with its real pictures and clip (${n.images.join(", ")}) byte for byte, in order` : ""));
+    }
+    for (const n of NOTES.filter((x) => x.upload)) {
+        ok(appDownload[n.name].filename === n.name && M.sha(appDownload[n.name].bytes) === M.MEDIA[n.upload].sha256, `${n.name}: the app's Download is exactly the uploaded picture (SHA-256)`);
     }
     ok(NOTES.every((n) => outer(n).startsWith(PREFIX) === n.sensitive), "Drive: the 3 sensitive notes are double encrypted, the 3 normal ones single encrypted");
 
     // What every decrypting CLI mode must write for each note.
     const expected = {};
     for (const n of NOTES) expected[outName(n)] = n.sensitive ? Buffer.from(outer(n)) : appDownload[n.name].bytes;
-    const plainMarkers = ["PIN 2222", "PIN 4444", "iVBORw0KGgo", "R0lGODlh", "data:image"];
+    // Plaintext a .sensitive file must never hold: the typed secrets, any picture / clip header or data: URL, and
+    // slices of the sensitive notes' real samples (raw and base64).
+    const plainMarkers = ["PIN 2222", "PIN 4444", "iVBORw0KGgo", "R0lGODlh", "/9j/", "UklGR", "T2dnUw", "data:image", "data:audio"];
+    const sensitiveSampleLeak = (buf) => M.leaks(buf);
     // Check one CLI run's notes against `expected` (only the notes in `names`).
     const check = (label, r, names = NOTES.map((n) => n.name)) => {
         const want = NOTES.filter((n) => names.includes(n.name)).map(outName).sort();
@@ -155,7 +157,7 @@ const isPrivate = (r) => process.platform === "win32" || Object.entries(r.modes)
         ok(want.every((f) => r.files[f] && Buffer.compare(r.files[f], expected[f]) === 0),
             `${label}: normal notes byte-for-byte the app's Download; sensitive notes = their locked envelope`);
         ok(want.filter((f) => f.endsWith(".sensitive")).every((f) => r.files[f].toString().startsWith(PREFIX)
-            && plainMarkers.every((m) => !r.files[f].toString().includes(m))), `${label}: .sensitive files hold no plaintext and no image data`);
+            && plainMarkers.every((m) => !r.files[f].toString().includes(m)) && !sensitiveSampleLeak(r.files[f])), `${label}: .sensitive files hold no plaintext and no picture / audio data`);
         const nSens = NOTES.filter((n) => names.includes(n.name) && n.sensitive).length;
         ok(nSens ? r.out.includes(`${nSens} sensitive note(s)`) && r.out.includes("Decrypt Sensitive File") : !r.out.includes("sensitive note(s)"),
             `${label}: ` + (nSens ? `says ${nSens} sensitive note(s) need 'Decrypt Sensitive File'` : "no sensitive-note hint"));

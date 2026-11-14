@@ -29,6 +29,7 @@ import { spawnSync } from "child_process";
 import fs from "fs"; import path from "path"; import os from "os";
 import { fileURLToPath, pathToFileURL } from "url";
 import { VAULTS, GROUPS, PARTS } from "./options.parts.mjs";
+import M from "../lib/media.cjs"; // real sample files (tests/fixtures/media)
 
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
@@ -59,29 +60,41 @@ if (base.status !== 0) { console.error("Could not read the original CLI from git
 fs.writeFileSync(OLDCLI, base.stdout);
 
 // ---------------- note contents (as the app stores them) ----------------
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-// Only sensitive notes use these, so their presence in any output = a leak.
-const GIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-const SECRET_AUDIO = Buffer.from("ID3secret-audio-bytes").toString("base64");
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF\n").toString("base64");
-const embedImg = (b64, mime) => `<span class="media-embed" contenteditable="false"><img src="data:${mime};base64,${b64}"></span>`;
-const embedAudio = (b64) => `<span class="media-embed" contenteditable="false"><audio controls="" src="data:audio/mpeg;base64,${b64}"></audio></span>`;
+// Real sample files (tests/lib/media.cjs). The normal notes hold picture.png, pic.webp, voice.mp3, doc.pdf and
+// data.bin; ONLY sensitive notes hold photo.jpg, anim.gif, clip.ogg and secret.pdf - so any of their bytes in
+// an output = a leak.
+const embedImg = (f) => `<span class="media-embed" contenteditable="false"><img src="${M.MEDIA[f].dataUrl}"></span>`;
+const embedAudio = (f) => `<span class="media-embed" contenteditable="false"><audio controls="" src="${M.MEDIA[f].dataUrl}"></audio></span>`;
+const SENSITIVE_ONLY = ["photo.jpg", "anim.gif", "clip.ogg", "secret.pdf"];
+const NORMAL_ONLY = ["picture.png", "pic.webp", "voice.mp3", "doc.pdf", "data.bin"];
+// A piece of a sensitive-only sample that NO normal note's sample holds (raw or in base64), so finding it in an
+// output can only mean a leak. (Files made by the same tool share text - two PDFs share their metadata - so the
+// piece is searched for, not just taken from the middle.)
+const uniquePiece = (f, form) => {
+    const m = M.MEDIA[f], src = form === "raw" ? m.bytes : Buffer.from(m.b64), len = form === "raw" ? 24 : 32;
+    const step = form === "raw" ? 24 : 32; // base64: whole 4-char groups, so the piece is in any data: URL of the file
+    for (let i = Math.floor(src.length / 2 / step) * step; i + len <= src.length; i += step) {
+        const piece = src.subarray(i, i + len);
+        if (NORMAL_ONLY.every((g) => !M.MEDIA[g].bytes.includes(piece) && !Buffer.from(M.MEDIA[g].b64).includes(piece))) return piece;
+    }
+    throw new Error(`no piece of ${f} (${form}) is unique to it`);
+};
 const normalNotes = [
     { name: "plain-text", content: "<div>Plain text PIN 1111 café ✓ &lt;tag&gt;</div><div><br></div><div>line 2</div>" },
-    { name: "rich-images", content: `<div><b>Bold</b> <i>it</i> <u>un</u> with pictures </div>${embedImg(PNG, "image/png")} ${embedImg(PNG, "image/png")} ${embedAudio(Buffer.from("ID3plain-audio").toString("base64"))} end` },
-    { name: "photo.png", content: `data:image/png;base64,${PNG}` },
-    { name: "doc.pdf", content: `data:application/pdf;base64,${PDF}` },
-    { name: "unknown.bin", content: `data:application/octet-stream;base64,${Buffer.from("no magic here").toString("base64")}` },
-    { name: "noext", content: `data:image/png;base64,${PNG}` },
+    { name: "rich-images", content: `<div><b>Bold</b> <i>it</i> <u>un</u> with pictures </div>${embedImg("picture.png")} ${embedImg("pic.webp")} ${embedAudio("voice.mp3")} end` },
+    { name: "photo.png", content: M.MEDIA["picture.png"].dataUrl },
+    { name: "doc.pdf", content: M.MEDIA["doc.pdf"].dataUrl },
+    { name: "unknown.bin", content: M.MEDIA["data.bin"].dataUrl },
+    { name: "noext", content: M.MEDIA["picture.png"].dataUrl },
     { name: "a:b*c?", content: "<div>odd name</div>" },
     { name: "empty", content: "" },
 ];
 const sensitiveNotes = [
     { name: "s-text", pw: "SecretText1", content: "<div>SECRET-1 PIN 2222 café ✓</div>" },
-    { name: "s-rich-images", pw: "SecretRich2", content: `<div>SECRET-2 <b>bold</b></div>${embedImg(GIF, "image/gif")} ${embedImg(GIF, "image/gif")} ${embedAudio(SECRET_AUDIO)} end` },
-    { name: "s-photo.png", pw: "SecretPhoto3", content: `data:image/gif;base64,${GIF}` },
-    { name: "s-doc.pdf", pw: "SecretDoc44", content: `data:application/pdf;base64,${Buffer.from("%PDF-1.4\nSECRET-4\n%%EOF\n").toString("base64")}` },
-    { name: "s-noext", pw: "SecretNoExt5", content: `data:image/gif;base64,${GIF}` },
+    { name: "s-rich-images", pw: "SecretRich2", content: `<div>SECRET-2 <b>bold</b></div>${embedImg("photo.jpg")} ${embedImg("anim.gif")} ${embedAudio("clip.ogg")} end` },
+    { name: "s-photo.png", pw: "SecretPhoto3", content: M.MEDIA["anim.gif"].dataUrl }, // a GIF under a .png name
+    { name: "s-doc.pdf", pw: "SecretDoc44", content: M.MEDIA["secret.pdf"].dataUrl },
+    { name: "s-noext", pw: "SecretNoExt5", content: M.MEDIA["photo.jpg"].dataUrl },
     { name: "s:odd?", pw: "SecretOdd666", content: "<div>SECRET-6 odd name</div>" },
     { name: "s-empty", pw: "SecretEmpty7", content: "" },
 ];
@@ -92,7 +105,9 @@ const clashNotes = [
     { name: "safe.sensitive", content: `data:text/plain;base64,${Buffer.from("a normal upload").toString("base64")}` }, // safe.sensitive -> safe (1).sensitive
     { name: "x.sensitive", pw: "XPass9999", content: "<div>SECRET-9</div>" }, // x.sensitive.sensitive
 ];
-const LEAKS = ["SECRET-", GIF, SECRET_AUDIO];
+// A sensitive-only sample's bytes (raw, as an opened upload would be written) or base64 (as inside an opened
+// rich text note), or the SECRET- marker in its text.
+const LEAKS = ["SECRET-", ...SENSITIVE_ONLY.flatMap((f) => [uniquePiece(f, "raw"), uniquePiece(f, "b64")])];
 
 // ---------------- vault builder (local files + fake Drive) ----------------
 const FP = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", MASTER = "Master123";
@@ -480,7 +495,7 @@ if (PART && PART !== "rest") { // just one group of one vault: done
 section("\n=== usage errors ===");
 for (const [label, args] of [["no arguments", []], ["-m missing", ["-t", "GOODTOKEN"]], ["-m bogus", ["-m", "maybe"]], ["-m without a value", ["-m"]], ["-m ON (case)", ["-m", "ON"]]]) {
     const r = run(NEWCLI, args, "");
-    ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on', 'off', 'sensitive', 'export' or 'import'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
+    ok(r.code === 1 && r.out.includes("Usage:") && r.out.includes("-m must be 'on', 'off', 'sensitive', 'export', 'import' or 'rotate'") && !Object.keys(r.files).length, `${label}: usage message, exit 1, nothing written`);
     ok(r.out.includes("-m sensitive") && r.out.includes("--help"), `${label}: usage lists '-m sensitive' and points to --help`);
     ok(r.out.includes("'-m on -x'") && r.out.includes("Config/config.json") && r.out.includes("/Entries") && r.out.includes("hidden app-data area")
         && r.out.includes("master password that was in use") && r.out.includes("Decrypt Sensitive File"),

@@ -7,18 +7,19 @@
 // Save (and "Nothing to save.."), saving and reopening (the sensitive note with
 // its password), Search, Rename, Download and Delete; both notes hold
 // byte-identical content (the sensitive one still double encrypted in Drive).
-// Mobile: the always-visible ✕ (with confirm) and tap-to-open of a picture.
+// Mobile: the always-visible ✕ (with confirm) and tap-to-open of a picture. The pictures and clips inserted
+// and pasted are REAL sample files (tests/lib/media.cjs); clipboard pictures are real PNGs the browser draws.
 // Only the designed differences are allowed: the sensitive note asks for its
 // password when opened, warns before Download, and is listed with a padlock.
 // Usage: node media-parity.test.cjs <baseUrl>   (normally via ../run-all.mjs)
 const { chromium, fs, drive, GIS_STUB, driveRoute, ok, finish, newPage, modal, clickModal, login, onMain, unlockInput, openSearch } = require("./lib/harness.cjs");
 const path = require("path");
 const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 const ROOT = path.join(__dirname, "..", "..");
 const BASE = process.argv[2];
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const MP3 = Buffer.from("ID3fakeaudio-for-tests");
+const JPG = M.MEDIA["photo.jpg"], MP3 = M.MEDIA["voice.mp3"], PNG = M.MEDIA["picture.png"], OGG = M.MEDIA["clip.ogg"], GIF = M.MEDIA["anim.gif"];
 const PREFIX = "<<eNotesMgr-sensitive-note-v1>>";
 const NOTE_PW = "NotePass1";
 
@@ -117,16 +118,16 @@ const NOTE_PW = "NotePass1";
         await clipboardText("pasted words ");
         await step(kind, "Ctrl+V text", () => page.keyboard.press("Control+v"));
         await step(kind, "Insert Image button", async () => {
-            await page.setInputFiles("#hidden-ins-image", { name: "a.png", mimeType: "image/png", buffer: PNG });
+            await page.setInputFiles("#hidden-ins-image", { name: "photo.jpg", mimeType: JPG.mime, buffer: JPG.bytes });
         });
         await step(kind, "Insert Audio button", async () => {
-            await page.setInputFiles("#hidden-ins-audio", { name: "a.mp3", mimeType: "audio/mpeg", buffer: MP3 });
+            await page.setInputFiles("#hidden-ins-audio", { name: "voice.mp3", mimeType: MP3.mime, buffer: MP3.bytes });
         });
         const bytes = await clipboardImage(1280, 720);
         await page.click("#editor"); await page.keyboard.press("End");
         await step(kind, `Ctrl+V screenshot (${(bytes / 1048576).toFixed(1)} MB)`, () => page.keyboard.press("Control+v"));
-        await step(kind, "paste an image file", () => pasteFile("p.png", "image/png", PNG.toString("base64")));
-        await step(kind, "paste an audio file", () => pasteFile("a.mp3", "audio/mpeg", MP3.toString("base64")));
+        await step(kind, "paste an image file", () => pasteFile("picture.png", PNG.mime, PNG.b64));
+        await step(kind, "paste an audio file", () => pasteFile("clip.ogg", OGG.mime, OGG.b64));
         await step(kind, "remove an image with its ✕", async () => {
             const e = page.locator("#editor .media-embed").first();
             await e.hover(); await e.locator(".embed-del").click();
@@ -161,6 +162,13 @@ const NOTE_PW = "NotePass1";
         await status();
         await step(kind, "after save + reopen", async () => {});
         ok(await savedHtml() === before, `${kind}: reopened note is exactly what was saved`);
+        // Reopened: every real sample in it decodes / plays as itself (size, length, SHA-256); the browser-drawn
+        // clipboard pictures decode too.
+        const l = await M.look(page);
+        const shown = l.srcs.map((src, i) => [M.whichDataUrl(src), l.looks[i]]);
+        const broken = shown.filter(([f, look]) => (f === "?" ? !/^[1-9]\d*x[1-9]\d*$/.test(look) : `${f} ${look}` !== M.expectedLook(f)));
+        ok(broken.length === 0 && shown.some(([f]) => f === "photo.jpg") && shown.some(([f]) => f === "picture.png"),
+            `${kind}: reopened, every picture decodes at its size and every clip plays for its length (${M.looksOf(l).replace(/\?/g, "clipboard picture")})` + (broken.length ? ` - broken: ${JSON.stringify(broken)}` : ""));
         // Reopened: paste once more without clicking, then save again.
         await clipboardImage(4, 4);
         await step(kind, "Ctrl+V image right after reopening", () => page.keyboard.press("Control+v"));
@@ -233,12 +241,8 @@ const NOTE_PW = "NotePass1";
     ok(!fileByName("note-n-renamed") && !fileByName("note-s-renamed") && await page.inputValue("#file-select") === "", "Delete works for both");
 
     console.log("5. Mobile: the always-visible ✕ (with confirm) and tap-to-open work the same");
-    // Two fresh notes with one (tappable, 200x150) picture each, for the mobile checks.
-    const bigPng = Buffer.from(await page.evaluate(() => {
-        const c = document.createElement("canvas"); c.width = 200; c.height = 150;
-        const g = c.getContext("2d"); g.fillStyle = "#7c5fd0"; g.fillRect(0, 0, 200, 150);
-        return c.toDataURL("image/png").split(",")[1];
-    }), "base64");
+    // Two fresh notes with one (tappable, 200x150) real picture each, for the mobile checks.
+    const bigPng = PNG.bytes;
     for (const [name, sensitive] of [["mob-n", false], ["mob-s", true]]) {
         await page.click(sensitive ? "#tb-new-sensitive" : "#tb-new");
         await modal(page, sensitive ? "new sensitive note" : "Enter a name for the new note").locator("input").fill(name);
@@ -267,9 +271,9 @@ const NOTE_PW = "NotePass1";
         if (popup) await popup.close();
         // Insert a picture, then remove it with its always-visible ✕ (confirm).
         const before = await mob.locator("#editor .media-embed").count();
-        await mob.setInputFiles("#hidden-ins-image", { name: "m.png", mimeType: "image/png", buffer: PNG });
+        await mob.setInputFiles("#hidden-ins-image", { name: "anim.gif", mimeType: GIF.mime, buffer: GIF.bytes });
         await mob.waitForFunction((c) => document.querySelectorAll("#editor .media-embed").length > c, before);
-        const tiny = mob.locator("#editor .media-embed").filter({ has: mob.locator(`img[src="data:image/png;base64,${PNG.toString("base64")}"]`) });
+        const tiny = mob.locator("#editor .media-embed").filter({ has: mob.locator(`img[src="${GIF.dataUrl}"]`) });
         await tiny.locator(".embed-del").click();
         await clickModal(mob, "Remove this image?", "OK");
         await mob.waitForTimeout(200);

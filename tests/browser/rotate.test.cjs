@@ -1,0 +1,266 @@
+// End to end: a new file password with the export CLI's '-m rotate', the app doing the set-up in between.
+// Account A makes every kind of note in the app from REAL sample files (tests/lib/media.cjs) - rich text (text
+// only; text with pictures; text with audio clips; text, pictures and clips all mixed up, a video among them;
+// pictures only; clips only; pictures and clips; empty) or uploads (JPEG, PNG, GIF, WebP - one without an
+// extension -, MP3, WAV, Ogg, M4A; MP4, WebM, PDF, a text file, a web page, binary data), each as a normal
+// AND a sensitive note - checks each against its samples (pictures decode at their sizes, clips play for their
+// lengths, every file byte for byte by SHA-256), and changes its settings (dark theme, a longer session
+// timeout). '-m rotate' backs everything up, saves and checks it and - after the typed confirmation - deletes
+// A's data; it stops there (no new token yet). The app then sets the account up again (a NEW file password,
+// NEW recovery codes); '-m rotate' run again in the same folder puts everything back. Then: in Drive every
+// note is exactly as before (metadata incl. dates, content) under the new file password, which the old one
+// doesn't open; in the app every note shows, opens (sensitive ones with their note password) and downloads
+// exactly as before - still exactly its sample files, every picture decoding and every clip playing as
+// before - the dark theme and the session timeout are back, the old recovery codes no longer work and the
+// new ones do. Every note is also compared by SHA-256: its stored content and its Download, before and after.
+// Three parts (ENOTES_TEST_PART, see rotate.test.parts.mjs): the rich text notes, the uploaded pictures and
+// audio clips, the uploaded videos and documents - each the whole rotation.
+// Usage: node rotate.test.cjs <baseUrl>   (normally via ../run-all.mjs)
+const { chromium, fs, drive, ok, finish, newPage, modal, clickModal, login, unlockInput, onMain, logout } = require("./lib/harness.cjs");
+const path = require("path");
+const os = require("os");
+const { spawnSync } = require("child_process");
+const crypto = require("crypto");
+const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs");
+
+const ROOT = path.join(__dirname, "..", "..");
+const CLI = path.join(ROOT, "www", "enotesmgr-export-cli.js");
+const FAKEFETCH = path.join(ROOT, "tests", "cli", "fakefetch.cjs");
+const WORK = fs.mkdtempSync(path.join(os.tmpdir(), "enotes-rotate-e2e-"));
+const sha = (x) => crypto.createHash("sha256").update(x).digest("hex");
+const LOCK = " \u{1F512}";
+const MASTER = "MasterA123";
+const EMAIL = "tester@gmail.com"; // the CLI's fake Drive account
+
+// Every kind of note of each group, as a normal and as a sensitive note (pw).
+const isAV = (u) => ["image", "audio"].includes(M.MEDIA[u.file].type);
+const GROUPS = {
+    rich: M.RICH.map((r) => ({ ...r, kind: "new" })),
+    "uploads-media": M.UPLOADS.filter(isAV).map((u) => ({ ...u, kind: "upload" })), // pictures and audio clips (the app shows them)
+    "uploads-files": M.UPLOADS.filter((u) => !isAV(u)).map((u) => ({ ...u, kind: "upload" })), // videos, PDF, text, web page, binary
+};
+const TITLES = { rich: "rich text notes", "uploads-media": "uploaded pictures and audio clips", "uploads-files": "uploaded videos and documents" };
+const notesOf = (group) => [...GROUPS[group], ...GROUPS[group].map((n, i) => ({ ...n, name: "s-" + n.name, pw: `NotePass${i}x` }))];
+
+// The CLI, always in the same folder per flow (a stopped rotation is continued there), on a dump of the app's Drive.
+function cli(cwd, args, input, driveFile) {
+    const r = spawnSync(process.execPath, ["-r", FAKEFETCH, CLI, ...args], { cwd, input, encoding: "utf8", env: { ...process.env, FAKE_DRIVE: driveFile, FAKE_EMAIL: EMAIL } });
+    return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
+}
+
+(async () => {
+    globalThis.__CRYPTO_WASM_BYTES__ = fs.readFileSync(path.join(ROOT, "www/js/crypto/crypto.wasm")).toString("base64");
+    const C = await import(pathToFileURL(path.join(ROOT, "www/js/crypto/crypto.js")).href);
+    await C.cryptoReady;
+    const fileByName = (n) => [...drive.values()].find((f) => f.name === n);
+    const fpOf = (master) => JSON.parse(C.decryptData(fileByName("config.json").content, master)).file_password;
+    const tryDec = (c, p) => { try { return C.decryptData(c, p); } catch { return null; } };
+
+    const { PARTS } = await import(pathToFileURL(path.join(__dirname, "rotate.test.parts.mjs")).href);
+    const PART = process.env.ENOTES_TEST_PART || "";
+    if (PART && !PARTS.includes(PART)) { console.error(`ENOTES_TEST_PART must be one of ${PARTS.join(", ")} (or unset), not '${PART}'`); process.exit(2); }
+    const browser = await chromium.launch();
+    for (const group of PARTS) {
+    if (PART && PART !== group) continue;
+    const NOTES = notesOf(group);
+    const ROT_CWD = fs.mkdtempSync(path.join(WORK, `rotation-${group}-`));
+    drive.clear();
+    console.log(`\n=== the ${TITLES[group]} (normal and sensitive): ${NOTES.map((n) => n.name).join(", ")} ===`);
+    const page = await newPage(browser);
+    const status = () => page.waitForFunction(() => { const s = document.querySelector(".status-overlay"); return !s || s.style.display === "none"; });
+    const waitSel = (n) => page.waitForFunction((x) => document.querySelector("#file-select").value === x, n);
+    const fillPw = async (m, a, b) => { const i = m.locator("input[type=password]"); await i.nth(0).fill(a); if (b !== undefined) await i.nth(1).fill(b); };
+    const editorHtml = () => page.evaluate(() => {
+        const c = document.getElementById("editor").cloneNode(true);
+        c.querySelectorAll(".embed-del").forEach((e) => e.remove());
+        c.querySelectorAll(".media-embed.selected").forEach((e) => e.classList.remove("selected"));
+        return c.innerHTML;
+    });
+    const open = async (name, pw) => {
+        await page.selectOption("#file-select", name);
+        if (await modal(page, "save the current note").count()) await clickModal(page, "save the current note", "No");
+        if (pw) { const m = modal(page, "is a sensitive note"); await m.waitFor(); await fillPw(m, pw); await clickModal(page, "is a sensitive note", "Unlock"); }
+        await waitSel(name); await status();
+    };
+    const download = async (name, pw) => {
+        await open(name, pw);
+        const [d] = await Promise.all([page.waitForEvent("download"), (async () => {
+            await page.click("#tb-download");
+            if (pw) await clickModal(page, "will NOT be encrypted", "OK");
+        })()]);
+        return { filename: d.suggestedFilename(), bytes: fs.readFileSync(await d.path()) };
+    };
+    // Set up the account in the app; -> its recovery codes.
+    const setup = async (master) => {
+        await login(page);
+        await page.waitForSelector("#su-pwd", { timeout: 30000 });
+        await page.fill("#su-pwd", master); await page.fill("#su-pwd2", master);
+        const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#su-finish")]);
+        const codes = fs.readFileSync(await dl.path(), "utf8").trim().split("\n");
+        await clickModal(page, "Recovery codes downloaded", "I've saved them");
+        await onMain(page);
+        return codes;
+    };
+    const dumpDrive = (file) => { fs.writeFileSync(file, JSON.stringify([...drive.values()])); return file; };
+    const loadDrive = (file) => { const t = JSON.parse(fs.readFileSync(file, "utf8")); drive.clear(); t.forEach((f) => drive.set(f.id, f)); };
+    const settingsShown = async () => {
+        await page.click("#btn-settings");
+        await page.waitForFunction(() => !document.querySelector("#set-save").disabled);
+        const v = await page.evaluate(() => `${document.querySelector("#set-theme").value}/${document.querySelector("#set-timeout").value}`);
+        await page.click("#set-cancel"); await page.waitForSelector("#file-select");
+        return v;
+    };
+
+    console.log(`1. Account A: ${NOTES.length} notes, and its own settings`);
+    const oldCodes = await setup(MASTER);
+    for (const n of NOTES) {
+        if (n.kind === "upload") {
+            const [fc] = await Promise.all([page.waitForEvent("filechooser"), page.click(n.pw ? "#tb-upload-sensitive" : "#tb-upload")]);
+            await fc.setFiles({ name: n.name, mimeType: n.mime, buffer: M.MEDIA[n.file].bytes });
+        } else {
+            await page.click(n.pw ? "#tb-new-sensitive" : "#tb-new");
+            const m = modal(page, n.pw ? "new sensitive note" : "Enter a name for the new note");
+            await m.locator("input").fill(n.name); await m.locator(".modal-actions button", { hasText: "OK" }).click();
+        }
+        if (n.pw) { const m = modal(page, "Choose an extra password"); await m.waitFor(); await fillPw(m, n.pw, n.pw); await clickModal(page, "Choose an extra password", "Create"); }
+        await waitSel(n.name); await status();
+        if (n.kind === "new" && n.body.length) { await M.writeBody(page, n.body); await page.click("#tb-save"); await status(); } // ('empty': created, nothing typed)
+    }
+    await page.click("#btn-settings");
+    await page.selectOption("#set-theme", "Dark"); await page.fill("#set-timeout", "900");
+    await page.click("#set-save"); await onMain(page);
+    ok(await page.evaluate(() => document.documentElement.dataset.theme) === "dark" && await settingsShown() === "Dark/900", "A's settings: dark theme, session timeout 900");
+    const inA = {}, offA = [];
+    for (const n of NOTES) {
+        const d = await download(n.name, n.pw);
+        inA[n.name] = { ...d, look: await M.look(page), html: n.kind === "new" ? await editorHtml() : null };
+        const why = M.vsSamples(n, inA[n.name].look, d); if (why) offA.push(why);
+    }
+    const { pictures, clips } = M.countMedia(NOTES);
+    ok(offA.length === 0, `in A every note is exactly its real sample files: ${pictures} picture(s) decode at their sizes, ${clips} clip(s) play for their lengths, each byte for byte its sample (SHA-256), every upload downloads as exactly its file, the text in order` + (offA.length ? `\n      ${offA.join("\n      ")}` : ""));
+    ok(NOTES.every((n) => !M.leaks(fileByName(n.name).content)), "nothing of the samples or the typed text is readable in Drive");
+    const labelsA = await page.$$eval("#file-select option", (os) => os.map((o) => o.textContent).filter(Boolean));
+    await logout(page);
+    const oldFp = fpOf(MASTER);
+    const storedA = Object.fromEntries(NOTES.map((n) => { const f = fileByName(n.name); return [n.name, { appProperties: f.appProperties, content: C.decryptData(f.content, oldFp) }]; }));
+    // Fingerprints: every note's name, metadata, SHA-256 of its stored content and of its Download.
+    const printsA = NOTES.map((n) => `${n.name} | ${JSON.stringify(storedA[n.name].appProperties)} | ${sha(storedA[n.name].content)} | ${inA[n.name].filename} ${sha(inA[n.name].bytes)}`).sort();
+
+    console.log("2. '-m rotate': back up, save, check, delete - then it waits for the set-up");
+    const d1 = dumpDrive(path.join(WORK, "drive1.json"));
+    const r1 = cli(ROT_CWD, ["-m", "rotate"], `GOODTOKEN\n${MASTER}\nWIPE ${EMAIL}\n`, d1);
+    loadDrive(d1);
+    ok(r1.code === 1 && r1.out.includes("Deleted.") && r1.out.includes("The rotation is NOT finished") && !fileByName("eNotes Manager"),
+        "A's data is deleted after the checks and the confirmation; with no new token yet it stops, saying how to finish" + (r1.code === 1 ? "" : `: ${r1.out.slice(-500)}`));
+
+    console.log("3. The app sets the account up again");
+    const newCodes = await setup(MASTER);
+    await logout(page);
+    const newFp = fpOf(MASTER);
+    ok(newFp && newFp !== oldFp, "the set-up made a NEW file password (the same master password was chosen)");
+
+    console.log("4. '-m rotate' again in the same folder: everything is put back");
+    const d2 = dumpDrive(path.join(WORK, "drive2.json"));
+    const r2 = cli(ROT_CWD, ["-m", "rotate"], `\n${MASTER}\nGOODTOKEN\n${MASTER}\n`, d2);
+    loadDrive(d2);
+    ok(r2.code === 0 && r2.out.includes("Continuing the rotation") && r2.out.includes(`Rotation finished for ${EMAIL}`), "it continues the stopped rotation and finishes" + (r2.code === 0 ? "" : `: ${r2.out.slice(-600)}`));
+    const entries = [...drive.values()].filter((f) => f.parents.includes(fileByName("Entries").id));
+    ok(entries.length === NOTES.length && NOTES.every((n) => { const f = fileByName(n.name); return f && JSON.stringify(f.appProperties) === JSON.stringify(storedA[n.name].appProperties) && tryDec(f.content, newFp) === storedA[n.name].content; }),
+        "in Drive every note is EXACTLY as before - metadata (dates, type, sensitive) and content - under the new file password");
+    ok(entries.every((f) => tryDec(f.content, oldFp) === null), "the old file password opens none of them");
+    const printsDrive = NOTES.map((n) => { const f = fileByName(n.name); return `${n.name} | ${JSON.stringify(f.appProperties)} | ${sha(tryDec(f.content, newFp) || "")}`; }).sort();
+    ok(JSON.stringify(printsDrive) === JSON.stringify(printsA.map((x) => x.split(" | ").slice(0, 3).join(" | ")).sort()),
+        `SHA-256 of every note's stored content (with its name and metadata): the same before and after - ${NOTES.length} notes`);
+    ok(JSON.stringify(JSON.parse(tryDec(fileByName("settings.json").content, newFp))) === JSON.stringify({ session_timeout_seconds: 900, app_theme: "Dark" }), "settings.json: A's settings, under the new file password");
+
+    console.log("5. In the app, everything is as it was");
+    await login(page); await unlockInput(page, MASTER); await onMain(page);
+    ok(await page.evaluate(() => document.documentElement.dataset.theme) === "dark", "the dark theme is back right after unlocking");
+    ok(await settingsShown() === "Dark/900", "the Settings page shows Dark / 900");
+    // (back on the main page, the note list loads again: wait for it)
+    await page.waitForFunction((n) => [...document.querySelectorAll("#file-select option")].filter((o) => o.textContent).length >= n, labelsA.length, { timeout: 30000 }).catch(() => {});
+    await status();
+    const labels = await page.$$eval("#file-select option", (os) => os.map((o) => o.textContent).filter(Boolean));
+    ok(JSON.stringify(labels) === JSON.stringify(labelsA), "the file list is the same as before, padlocks included: " + labels.join(" | "));
+    const printsApp = [];
+    for (const n of NOTES) {
+        const d = await download(n.name, n.pw);
+        const l = await M.look(page);
+        const html = n.kind === "new" ? await editorHtml() : null;
+        const a = inA[n.name], why = M.vsSamples(n, l, d);
+        printsApp.push(`${n.name} | ${d.filename} ${sha(d.bytes)}`);
+        ok(l.view === a.look.view && M.looksOf(l) === M.looksOf(a.look) && html === a.html && Buffer.compare(d.bytes, a.bytes) === 0 && d.filename === a.filename && !why,
+            `'${n.name}'` + (n.pw ? " (with its note password)" : "") + `: shows as ${l.view}` + (l.srcs.length ? ` [${M.looksOf(l)}]` : "") + (html !== null ? ", same content" : "") +
+            `, Download identical to before (SHA-256 ${sha(d.bytes).slice(0, 12)}...) - exactly its sample files` + (why ? `\n      ${why}` : ""));
+    }
+    ok(JSON.stringify(printsApp.sort()) === JSON.stringify(printsA.map((x) => { const p = x.split(" | "); return `${p[0]} | ${p[3]}`; }).sort()),
+        `SHA-256 of every note's Download: the same before and after - ${NOTES.length} notes`);
+    if (group === "rich") {
+        await open("s-text", "NotePass0x");
+        await page.click("#editor"); await page.keyboard.press("End"); await page.keyboard.type(" edited after");
+        await page.click("#tb-save"); await status();
+        ok(C.decryptData(C.decryptData(fileByName("s-text").content, newFp).slice("<<eNotesMgr-sensitive-note-v1>>".length), "NotePass0x").includes("edited after"),
+            "a sensitive note edited and saved after the rotation: locked with its note password and the new file password");
+    } else {
+        const [fc] = await Promise.all([page.waitForEvent("filechooser"), page.click("#tb-upload-sensitive")]);
+        await fc.setFiles({ name: "after.png", mimeType: "image/png", buffer: M.MEDIA["picture.png"].bytes });
+        const m = modal(page, "Choose an extra password"); await m.waitFor(); await fillPw(m, "AfterPass1", "AfterPass1"); await clickModal(page, "Choose an extra password", "Create");
+        await waitSel("after.png"); await status();
+        ok(C.decryptData(C.decryptData(fileByName("after.png").content, newFp).slice("<<eNotesMgr-sensitive-note-v1>>".length), "AfterPass1") === M.MEDIA["picture.png"].dataUrl,
+            "a sensitive file uploaded after the rotation: locked with its note password and the new file password");
+    }
+    await logout(page);
+
+    console.log("6. Recovery codes: all the new ones are valid, the old ones open nothing; a reset with a new code works");
+    // In Drive: every new code opens its own recovery file, holding the NEW file password - the rotation's
+    // put-back left the set-up's recovery files alone (none deleted, none changed); no old code opens any.
+    const CODE = /^\d{16}$/, oldList = oldCodes.filter((c) => CODE.test(c)), newList = newCodes.filter((c) => CODE.test(c));
+    const recFolderId = fileByName("Recovery").id;
+    const recFiles = () => [...drive.values()].filter((f) => f.parents.includes(recFolderId));
+    const fpIn = (content, code) => { const t = tryDec(content, code); try { return t && JSON.parse(t).file_password; } catch { return null; } };
+    const fileOf = (code, files) => files.find((f) => fpIn(f.content, code) === newFp);
+    const opened = new Set(newList.map((c) => (fileOf(c, recFiles()) || {}).id).filter(Boolean));
+    ok(newList.length === 10 && recFiles().length === 10 && opened.size === 10,
+        `all ${newList.length} new recovery codes are valid: each opens its own recovery file in Drive (${opened.size} of ${recFiles().length}), which holds the NEW file password`);
+    ok(oldList.length === 10 && oldList.every((c) => recFiles().every((f) => tryDec(f.content, c) === null)), "none of the 10 old codes opens any recovery file");
+    // In the app: an old code is refused; a new one resets the master password, and everything opens after it.
+    await login(page); await unlockInput(page, oldCodes[0]);
+    await page.waitForFunction(() => document.querySelector("#mp-error").textContent === "Invalid recovery code", null, { timeout: 30000 });
+    ok(true, "an old recovery code: 'Invalid recovery code'");
+    const used = newList[3];
+    await unlockInput(page, used);
+    await page.waitForSelector("#rmp-pwd", { timeout: 30000 });
+    await page.fill("#rmp-pwd", "ResetPass789"); await page.fill("#rmp-pwd2", "ResetPass789"); await page.click("#rmp-reset");
+    await clickModal(page, "Master password reset", "OK");
+    await page.waitForSelector("#login-btn");
+    ok(fpOf("ResetPass789") === newFp, "a new recovery code resets the master password (the file password stays the new one)");
+    await login(page); await unlockInput(page, "ResetPass789"); await onMain(page);
+    await page.waitForFunction((n) => [...document.querySelectorAll("#file-select option")].filter((o) => o.textContent).length >= n, labelsA.length, { timeout: 30000 }).catch(() => {});
+    await status();
+    // A normal and a sensitive note holding real samples (not 's-text', edited in step 5).
+    const withMedia = (x) => (x.body ? M.mediaOf(x.body).length > 0 : true);
+    const probe = [NOTES.find((x) => !x.pw && withMedia(x)), NOTES.find((x) => x.pw && x.name !== "s-text" && withMedia(x))];
+    const afterReset = [];
+    for (const n of probe) {
+        const d = await download(n.name, n.pw);
+        const why = M.vsSamples(n, await M.look(page), d);
+        if (Buffer.compare(d.bytes, inA[n.name].bytes) !== 0 || why) afterReset.push(`${n.name}: ${why || "Download differs from before"}`);
+    }
+    ok(afterReset.length === 0, `after the reset, logged in with the new master password: '${probe[0].name}' and '${probe[1].name}' (with its note password) open and download exactly as before - still exactly their real sample files` +
+        (afterReset.length ? `\n      ${afterReset.join("\n      ")}` : ""));
+    await logout(page);
+    const left = recFiles();
+    ok(!fileOf(used, left) && newList.filter((c) => c !== used).every((c) => fileOf(c, left)), "the code used for the reset is used up; the other 9 new codes still open their files");
+
+    ok(page.cspViolations.length === 0, "no CSP violations");
+    await page.context().close();
+    }
+    await browser.close();
+    fs.rmSync(WORK, { recursive: true, force: true });
+    finish();
+})().catch((e) => {
+    console.error("HARNESS ERROR", e);
+    try { fs.rmSync(WORK, { recursive: true, force: true }); } catch {}
+    process.exit(2);
+});

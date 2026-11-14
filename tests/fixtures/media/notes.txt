@@ -1,0 +1,3 @@
+An uploaded text file ✓ café — 日本語
+line 2 with a tab	here
+last line without newline

@@ -6,6 +6,7 @@ const {
 } = require("./lib/harness.cjs");
 const path = require("path");
 const { pathToFileURL } = require("url");
+const M = require("../lib/media.cjs"); // real sample files (tests/fixtures/media)
 
 // Count and time every WASM decrypt/encrypt call, and track WASM memory size.
 const WASM_PROBE = `
@@ -33,9 +34,6 @@ const WASM_PROBE = `
   };
 })();`;
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
-const PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
-const TXT = Buffer.from("just some text, no magic number");
 
 (async () => {
     const browser = await chromium.launch();
@@ -60,28 +58,30 @@ const TXT = Buffer.from("just some text, no magic number");
     await page.click("#tb-new");
     await modal(page, "Enter a name").locator("input").fill("bank");
     await clickModal(page, "Enter a name", "OK");
-    await page.click("#editor"); await page.keyboard.type("PIN 4242 ");
-    await page.setInputFiles("#hidden-ins-image", { name: "a.png", mimeType: "image/png", buffer: PNG });
-    await page.waitForSelector("#editor .media-embed img");
-    await page.setInputFiles("#hidden-ins-audio", { name: "a.mp3", mimeType: "audio/mpeg", buffer: Buffer.from("ID3fakeaudio") });
-    await page.waitForSelector("#editor .media-embed audio");
+    // A real picture (Insert Image) and a real audio clip (Insert Audio).
+    await M.writeBody(page, [M.T("PIN 4242 "), M.I("photo.jpg"), M.A("voice.mp3")]);
     await page.keyboard.press("Control+s"); await status();
     await page.click("#tb-refresh"); await status();
     await page.waitForSelector("#editor .media-embed img");
-    ok(await page.locator("#editor .media-embed audio").count() === 1 && (await page.textContent("#editor")).includes("PIN 4242"), "rich text with inserted image + audio saves and reloads");
+    const reloaded = await M.look(page);
+    ok(await page.locator("#editor .media-embed audio").count() === 1 && (await page.textContent("#editor")).includes("PIN 4242") && M.looksOf(reloaded) === "photo.jpg 320x240 | voice.mp3 2.0s",
+        "rich text with an inserted picture + audio clip saves and reloads: the picture decodes at its size, the clip plays for its length, both byte for byte (SHA-256) - " + M.looksOf(reloaded));
 
-    console.log("B. Uploads (image / pdf / unknown)");
-    for (const [name, mime, buf] of [["pic.png", "image/png", PNG], ["doc.pdf", "application/pdf", PDF], ["notes.txt", "text/plain", TXT]]) {
-        await page.setInputFiles("#hidden-upload", { name, mimeType: mime, buffer: buf });
+    console.log("B. Uploads (picture / audio / video / pdf / unknown), real files");
+    for (const [name, sample] of [["pic.png", "picture.png"], ["doc.pdf", "doc.pdf"], ["notes.txt", "notes.txt"], ["voice.mp3", "voice.mp3"], ["movie.webm", "movie.webm"]]) {
+        const buf = M.MEDIA[sample].bytes;
+        await page.setInputFiles("#hidden-upload", { name, mimeType: M.MEDIA[sample].mime, buffer: buf });
         await page.waitForFunction((n) => document.querySelector("#file-select").value === n, name); await status();
         const ft = [...drive.values()].find((f) => f.name === name).appProperties.FileType;
         const shown = await page.evaluate(() => {
             const v = document.querySelector("#media-viewer");
             return v.hidden ? "editor" : v.querySelector("img") ? "image" : v.textContent.trim();
         });
+        const l = await M.look(page);
         const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#tb-download")]);
-        const same = Buffer.compare(fs.readFileSync(await dl.path()), buf) === 0;
-        ok(same, `upload ${name}: FileType=${ft}, shown as "${shown}", download returns identical bytes`);
+        const d = { filename: dl.suggestedFilename(), bytes: fs.readFileSync(await dl.path()) };
+        const why = M.vsSamples({ name, file: sample }, l, d);
+        ok(Buffer.compare(d.bytes, buf) === 0 && !why, `upload ${name}: FileType=${ft}, shown as "${shown}"` + (l.srcs.length ? ` (${M.looksOf(l)})` : "") + ", download returns identical bytes (SHA-256)" + (why ? ` - ${why}` : ""));
     }
     const [dlr] = await Promise.all([page.waitForEvent("download"), (async () => { await page.selectOption("#file-select", "bank"); await status(); await page.click("#tb-download"); })()]);
     ok(dlr.suggestedFilename() === "bank.html" && fs.readFileSync(await dlr.path(), "utf8").includes("PIN 4242"), "rich text note downloads as bank.html");
@@ -200,9 +200,11 @@ const TXT = Buffer.from("just some text, no magic number");
     await page.selectOption("#file-select", "bank"); await status();
     await page.waitForFunction(() => document.querySelector("#editor").textContent.includes("PIN 4242"));
     ok(await page.getAttribute("#editor", "spellcheck") === "false", "editor has spellcheck=\"false\"");
-    const leftovers = await page.evaluate(() => ({ pw: window.__probe.find("Master123"), note: window.__probe.find("PIN 4242"), mb: Math.round(window.__probe.mem() / 1048576) }));
+    const jpg = M.MEDIA["photo.jpg"].b64, jpgSlice = jpg.slice(Math.floor(jpg.length / 8) * 4, Math.floor(jpg.length / 8) * 4 + 32);
+    const leftovers = await page.evaluate((pic) => ({ pw: window.__probe.find("Master123"), note: window.__probe.find("PIN 4242"), pic: window.__probe.find(pic), mb: Math.round(window.__probe.mem() / 1048576) }), jpgSlice);
     ok(!leftovers.pw, `master password not left in WASM memory (${leftovers.mb} MiB searched)`);
     ok(!leftovers.note, "decrypted note text not left in WASM memory");
+    ok(!leftovers.pic, "the note's decrypted picture not left in WASM memory either");
 
     console.log("F. Errors");
     ok(csp.length === 0, "no CSP violations" + (csp[0] ? ": " + csp[0] : ""));
