@@ -8,6 +8,7 @@
 import { spawnSync } from "child_process";
 import fs from "fs"; import path from "path"; import crypto from "crypto"; import os from "os";
 import { fileURLToPath } from "url";
+import M from "../lib/media.cjs"; // real sample files (tests/fixtures/media)
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
 const BASELINE_COMMIT = "419c522"; // last commit before the hardening work
@@ -50,7 +51,7 @@ let a = run(OLDCLI, ["-m", "off", "-c", off("config.json"), "-d", off("notes")],
 let b = run(NEWCLI, ["-m", "off", "-c", off("config.json"), "-d", off("notes")], "Master123\n");
 let ta = tree(a.cwd), tb = tree(b.cwd);
 ok(a.code === 0 && b.code === 0, `both succeed (exit ${a.code}/${b.code})`);
-ok(Object.keys(tb.files).length === 8, "8 notes exported: " + Object.keys(tb.files).map((f) => path.basename(f)).join(" | "));
+ok(Object.keys(tb.files).length === 10, "10 notes exported: " + Object.keys(tb.files).map((f) => path.basename(f)).join(" | "));
 ok(same(ta, tb), "new output is byte-for-byte identical to the original CLI's");
 ok(allPrivate(tb), "new: folder 700, files 600  (original: " + [...new Set(Object.values(ta.modes))].join("/") + ")");
 
@@ -78,7 +79,7 @@ const env = { FAKE_DRIVE: path.join(HERE, "drive.json") };
 a = run(OLDCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", env, [FF]);
 b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", env, [FF]);
 ta = tree(a.cwd); tb = tree(b.cwd);
-ok(a.code === 0 && b.code === 0 && same(ta, tb) && Object.keys(tb.files).length === 8, "identical online export (8 notes)");
+ok(a.code === 0 && b.code === 0 && same(ta, tb) && Object.keys(tb.files).length === 10, "identical online export (10 notes)");
 ok(allPrivate(tb), "new: folder 700, files 600");
 
 console.log("6. Online, token pasted at the prompt (with stray spaces)");
@@ -95,7 +96,7 @@ console.log("8. Online mirror (-x), still-encrypted copy");
 a = run(OLDCLI, ["-m", "on", "-t", "GOODTOKEN", "-x"], "", env, [FF]);
 b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN", "-x"], "", env, [FF]);
 ta = tree(a.cwd); tb = tree(b.cwd);
-ok(a.code === 0 && b.code === 0 && same(ta, tb) && Object.keys(tb.files).length === 11, `identical mirror (${Object.keys(tb.files).length} files = config + settings + 1 recovery + 8 notes)`);
+ok(a.code === 0 && b.code === 0 && same(ta, tb) && Object.keys(tb.files).length === 13, `identical mirror (${Object.keys(tb.files).length} files = config + settings + 1 recovery + 10 notes)`);
 ok(allPrivate(tb), "new: folders 700, files 600");
 
 console.log("9. Mirror with hostile folder names '.' and '..'");
@@ -110,17 +111,22 @@ ok(Object.keys(tb.files).some((f) => f.endsWith("_../ESCAPED.txt")) && Object.ke
 
 console.log("10. Node 18 (no globalThis.crypto)");
 b = run(NEWCLI, ["-m", "off", "-c", off("config.json"), "-d", off("notes")], "Master123\n", {}, [N18]);
-ok(b.code === 0 && Object.keys(tree(b.cwd).files).length === 8, "offline export works");
+ok(b.code === 0 && Object.keys(tree(b.cwd).files).length === 10, "offline export works");
 b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", env, [N18, FF]);
-ok(b.code === 0 && Object.keys(tree(b.cwd).files).length === 8, "online export works");
+ok(b.code === 0 && Object.keys(tree(b.cwd).files).length === 10, "online export works");
 
 console.log("11. Exported content is correct (not just identical)");
 b = run(NEWCLI, ["-m", "off", "-c", off("config.json"), "-d", off("notes")], "Master123\n");
 const dir = fs.readdirSync(b.cwd).find((d) => d.startsWith("eNotes Manager Export_"));
 const rd = (f) => fs.readFileSync(path.join(b.cwd, dir, f));
 ok(rd("bank.html").toString().includes("<b>PIN</b> 4242 ✓ café"), "bank.html contains the note");
-ok(rd("photo.png").subarray(1, 4).toString() === "PNG" && rd("noext.png").subarray(1, 4).toString() === "PNG", "photo.png / noext.png are real PNG bytes");
-ok(rd("doc.pdf").toString().startsWith("%PDF"), "doc.pdf is the original PDF");
+ok(M.sha(rd("photo.png")) === M.MEDIA["picture.png"].sha256 && M.sha(rd("noext.png")) === M.MEDIA["picture.png"].sha256, "photo.png / noext.png are byte for byte the original picture (SHA-256)");
+ok(M.sha(rd("doc.pdf")) === M.MEDIA["doc.pdf"].sha256, "doc.pdf is byte for byte the original PDF (SHA-256)");
+ok(M.sha(rd("movie.mp4")) === M.MEDIA["movie.mp4"].sha256 && M.sha(rd("voice.mp3")) === M.MEDIA["voice.mp3"].sha256, "movie.mp4 / voice.mp3 are byte for byte the original video and audio clip (SHA-256)");
+{
+  const html = rd("bank.html").toString(), at = (f) => html.indexOf(M.MEDIA[f].b64);
+  ok(at("photo.jpg") > 0 && at("voice.mp3") > at("photo.jpg"), "bank.html holds the original picture and audio clip, byte for byte, in order");
+}
 ok(fs.existsSync(path.join(b.cwd, dir, "bank (1).html")), "name collision handled: 'bank (1).html'");
 
 console.log("12. Duplicates / glitches in Drive: the CLI picks what the app picks (read-only)");
@@ -129,11 +135,11 @@ console.log("12. Duplicates / glitches in Drive: the CLI picks what the app pick
   a = run(OLDCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", dupEnv, [FF]);
   b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", dupEnv, [FF]);
   const normal = tree(run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN"], "Master123\n", env, [FF]).cwd);
-  ok(Object.keys(tree(a.cwd).files).length < 8, `original CLI with duplicates listed first: exported ${Object.keys(tree(a.cwd).files).length} of 8 notes (the inconsistency)`);
-  ok(b.code === 0 && same(tree(b.cwd), normal), "current CLI: all 8 notes, identical to a normal export (data tree + the config whose key opens the notes)");
+  ok(Object.keys(tree(a.cwd).files).length < 10, `original CLI with duplicates listed first: exported ${Object.keys(tree(a.cwd).files).length} of 10 notes (the inconsistency)`);
+  ok(b.code === 0 && same(tree(b.cwd), normal), "current CLI: all 10 notes, identical to a normal export (data tree + the config whose key opens the notes)");
   b = run(NEWCLI, ["-m", "on", "-t", "GOODTOKEN", "-x"], "", dupEnv, [FF]);
   const mirrored = Object.keys(tree(b.cwd).files);
-  ok(b.code === 0 && b.out.includes("1 other 'eNotes Manager' folder(s) exist") && mirrored.length === 12,
+  ok(b.code === 0 && b.out.includes("1 other 'eNotes Manager' folder(s) exist") && mirrored.length === 14,
     "mirror (-x) with a duplicate tree: mirrors the data tree and says so");
   ok(mirrored.some((f) => f.endsWith("Config/config.json")) && mirrored.some((f) => f.endsWith("Config/config (1).json")),
     "  both config.json copies are kept in the backup ('config.json' + 'config (1).json'), none overwritten");

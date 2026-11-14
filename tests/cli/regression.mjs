@@ -11,6 +11,7 @@ import { spawnSync } from "child_process";
 import fs from "fs"; import path from "path"; import os from "os"; import crypto from "crypto";
 import { fileURLToPath, pathToFileURL } from "url";
 import { VAULTS, MODES, PARTS } from "./regression.parts.mjs";
+import M from "../lib/media.cjs"; // real sample files (tests/fixtures/media)
 
 const CLI_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(CLI_DIR, "..", "..");
@@ -32,15 +33,16 @@ globalThis.__CRYPTO_WASM_BYTES__ = fs.readFileSync(path.join(ROOT, "www/js/crypt
 const C = await imp("www/js/crypto/crypto.js"); await C.cryptoReady;
 const S = await imp("www/js/lib/sensitiveNote.js");
 
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-const GIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-const embed = (b64, mime) => `<span class="media-embed" contenteditable="false"><img src="data:${mime};base64,${b64}"></span>`;
+// Real sample files (tests/lib/media.cjs), as the app stores them.
+const embed = (f) => `<span class="media-embed" contenteditable="false"><img src="${M.MEDIA[f].dataUrl}"></span>`;
+const embedAudio = (f) => `<span class="media-embed" contenteditable="false"><audio controls="" src="${M.MEDIA[f].dataUrl}"></audio></span>`;
 const NORMAL = [
     ["plain", "<div>Plain PIN 1111 café ✓</div>"],
-    ["rich", `<div><b>B</b></div>${embed(PNG, "image/png")} ${embed(GIF, "image/gif")}`],
-    ["photo.png", `data:image/png;base64,${PNG}`],
-    ["doc.pdf", `data:application/pdf;base64,${Buffer.from("%PDF-1.4\n%%EOF\n").toString("base64")}`],
-    ["noext", `data:image/png;base64,${PNG}`],
+    ["rich", `<div><b>B</b></div>${embed("picture.png")} ${embed("anim.gif")} ${embedAudio("voice.mp3")}`],
+    ["photo.png", M.MEDIA["picture.png"].dataUrl],
+    ["doc.pdf", M.MEDIA["doc.pdf"].dataUrl],
+    ["noext", M.MEDIA["photo.jpg"].dataUrl],
+    ["movie.mp4", M.MEDIA["movie.mp4"].dataUrl],
     ["a:b*c?", "<div>odd</div>"],
     ["empty", ""],
     ["bank.html", "<div>clashes with bank</div>"],
@@ -48,7 +50,7 @@ const NORMAL = [
 ];
 const SENSITIVE = [
     ["s-text", "<div>SECRET-1</div>", "SecretText1"],
-    ["s-photo.png", `data:image/gif;base64,${GIF}`, "SecretPhoto2"],
+    ["s-photo.png", M.MEDIA["anim.gif"].dataUrl, "SecretPhoto2"], // a GIF under a .png name
     ["s:odd?", "<div>SECRET-3</div>", "SecretOdd33"],
 ];
 const MASTER = "Master123", FP = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";

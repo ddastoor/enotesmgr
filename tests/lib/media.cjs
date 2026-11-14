@@ -1,13 +1,14 @@
 // Real sample files for the tests (tests/fixtures/media, made once by make-media.sh there): real pictures
 // (JPEG, PNG with transparency, animated GIF, WebP), real audio clips (MP3, WAV, Ogg Opus, M4A / AAC), real
-// video clips with sound (MP4 H.264 + AAC, WebM VP9 + Opus), a real two-page PDF with text and a picture, a
-// UTF-8 text file, a web page and random binary data. Each file's SHA-256 is pinned here: a changed or broken
-// sample stops the tests at once instead of quietly testing something else. checkRealInBrowser() and
-// checkRealPdf() prove the samples are real: every picture decodes at its size, every clip plays for its
-// length, the PDF has its two pages and their text.
+// video clips with sound (MP4 H.264 + AAC, WebM VP9 + Opus), a real two-page PDF with text and a picture (and
+// a one-page one), a UTF-8 text file, a web page and random binary data. Each file's SHA-256 is pinned here:
+// a changed or broken sample stops the tests at once instead of quietly testing something else.
+// checkRealInBrowser() and checkRealPdf() prove the samples are real: every picture decodes at its size,
+// every clip plays for its length, each PDF has its pages and their text.
 //
-// Also the kinds of notes the end-to-end suites make from them (RICH, UPLOADS) and markers to prove no
-// plaintext of them leaks (leakMarkers).
+// Also the kinds of notes the end-to-end suites make from them (RICH, UPLOADS), markers to prove no
+// plaintext of them leaks (leakMarkers, leaks) and the in-app checks those suites share (writeBody, look,
+// looksOf, vsSamples, countMedia).
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -27,7 +28,9 @@ const MEDIA = {
     "clip.m4a": { mime: "audio/mp4", type: "audio", duration: 1, sha256: "685a4933b6134e4ec2ad1af7017f063129f96301ba1f3306e09dfc6c74bbcd3d" },
     "movie.mp4": { mime: "video/mp4", type: "video", width: 160, height: 120, duration: 2, sha256: "146d2fe189306a983138f178ffdb039691f759d4b7a60ed8d6acab243f05e9e1" },
     "movie.webm": { mime: "video/webm", type: "video", width: 160, height: 120, duration: 2, sha256: "32da800cdce871e0b8c8f08ecd55b8e3372600c0bc9333943bf93305273aca45" },
-    "doc.pdf": { mime: "application/pdf", type: "pdf", pages: 2, sha256: "a01f2750933d20011b86f2774a10fe3cbd6fdf53ab768b9c4faa9c905816e04c" },
+    "doc.pdf": { mime: "application/pdf", type: "pdf", pages: 2, texts: ["eNotes test PDF - page 1", "eNotes test PDF - page 2"], picture: true, sha256: "a01f2750933d20011b86f2774a10fe3cbd6fdf53ab768b9c4faa9c905816e04c" },
+    // A second PDF, held only by sensitive notes in some suites (its text has a SECRET- marker, so it shows any leak).
+    "secret.pdf": { mime: "application/pdf", type: "pdf", pages: 1, texts: ["SECRET-4 sensitive PDF"], picture: false, sha256: "daee7805036e0fc4be1da7238fa3641f0e8dea292ba27798980f2913a19a8f59" },
     "notes.txt": { mime: "text/plain", type: "text", sha256: "2e7ec78d4685384309d503ac2b3bbee9521c79261b4b769173c536a5503626bc" },
     "page.html": { mime: "text/html", type: "text", sha256: "dd3797f9cfcda497ce82074e269eba57d3832fad2142565dee38912cadd08f54" },
     "data.bin": { mime: "application/octet-stream", type: "binary", sha256: "bb9b8ef32898214a87de384ebda00b930dd0515dee53279f714439bec3e9dbb0" },
@@ -122,12 +125,15 @@ async function checkRealInBrowser(page) {
         return m.duration !== undefined && !(Math.abs(g.d - m.duration) < 0.1);
     }).map((g) => `${g.name}: ${JSON.stringify(g)}`);
 }
-// The PDF: a real PDF (header, cross-reference table, end marker) with exactly its 2 pages and their text.
+// The PDFs: each a real PDF (header, cross-reference table, end marker) with exactly its pages, their text and
+// (doc.pdf) its picture.
 function checkRealPdf() {
-    const t = MEDIA["doc.pdf"].bytes.toString("latin1");
-    const pages = (t.match(/\/Type \/Page[^s]/g) || []).length;
-    return t.startsWith("%PDF-1.") && /\nxref\n/.test(t) && t.trimEnd().endsWith("%%EOF") && pages === 2 &&
-        t.includes("(eNotes test PDF - page 1) Tj") && t.includes("(eNotes test PDF - page 2) Tj") && t.includes("/Subtype /Image");
+    return Object.values(MEDIA).filter((m) => m.type === "pdf").every((m) => {
+        const t = m.bytes.toString("latin1");
+        const pages = (t.match(/\/Type \/Page[^s]/g) || []).length;
+        return t.startsWith("%PDF-1.") && /\nxref\n/.test(t) && t.trimEnd().endsWith("%%EOF") && pages === m.pages &&
+            m.texts.every((x) => t.includes(`(${x}) Tj`)) && t.includes("/Subtype /Image") === m.picture;
+    });
 }
 
 // ---- In the app (a Playwright page, a note open on the main page) ----

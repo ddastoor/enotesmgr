@@ -5,17 +5,21 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
+import M from "../lib/media.cjs"; // real sample files (tests/fixtures/media)
 const CRYPTO_DIR = path.resolve(process.argv[2]);
 globalThis.__CRYPTO_WASM_BYTES__ = fs.readFileSync(path.join(CRYPTO_DIR, "crypto.wasm")).toString("base64");
 const m = await import(pathToFileURL(path.join(CRYPTO_DIR, "crypto.js")).href); await m.cryptoReady;
 const fp = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+// Real pictures, clips and files, stored as the app stores them (a rich text note's embeds, an upload's data: URL).
 const notes = {
-  "bank": "<p><b>PIN</b> 4242 ✓ café</p><span class=\"media-embed\"><img src=\"data:image/png;base64," + PNG + "\"></span>",
+  "bank": "<p><b>PIN</b> 4242 ✓ café</p><span class=\"media-embed\"><img src=\"" + M.MEDIA["photo.jpg"].dataUrl + "\"></span> " +
+    "<span class=\"media-embed\"><audio controls=\"\" src=\"" + M.MEDIA["voice.mp3"].dataUrl + "\"></audio></span>",
   "bank.html": "<p>collides with bank</p>",
-  "photo.png": "data:image/png;base64," + PNG,
-  "doc.pdf": "data:application/pdf;base64," + Buffer.from("%PDF-1.4\n%%EOF\n").toString("base64"),
-  "noext": "data:image/png;base64," + PNG,
+  "photo.png": M.MEDIA["picture.png"].dataUrl,
+  "doc.pdf": M.MEDIA["doc.pdf"].dataUrl,
+  "noext": M.MEDIA["picture.png"].dataUrl,
+  "movie.mp4": M.MEDIA["movie.mp4"].dataUrl,
+  "voice.mp3": M.MEDIA["voice.mp3"].dataUrl,
   "a:b*c?": "<p>weird name</p>",
   "café ☕ notes": "<p>unicode name</p>",
   "empty": "",

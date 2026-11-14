@@ -67,6 +67,17 @@ c.rect(40, 300, 200, 150, fill=0)
 c.showPage(); c.save()
 EOF
 
+# A second, one-page PDF that only sensitive notes hold in the tests (its text has a SECRET- marker).
+python3 -I - <<'EOF2'
+from reportlab.lib.pagesizes import A6
+from reportlab.pdfgen import canvas
+c = canvas.Canvas("secret.pdf", pagesize=A6, invariant=1, pageCompression=0)
+c.setTitle("eNotes sensitive test document"); c.setAuthor("eNotes tests")
+c.setFont("Helvetica-Bold", 14); c.drawString(30, 360, "SECRET-4 sensitive PDF")
+c.setFont("Helvetica", 10); c.drawString(30, 340, "A real one-page PDF that only a sensitive note holds.")
+c.showPage(); c.save()
+EOF2
+
 # A UTF-8 text file (CRLF and LF lines, a tab, no newline at the end), a web page (with a script the app
 # must never run) and 70000 bytes of (seeded) random binary data.
 printf 'An uploaded text file \xe2\x9c\x93 caf\xc3\xa9 \xe2\x80\x94 \xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\r\nline 2 with a tab\there\nlast line without newline' > notes.txt
